@@ -46,7 +46,10 @@ function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';cl
 
 /* ---- الاتصال بالدوال + طابور الإرسال عند انقطاع الإنترنت ---- */
 const bad=e=>!navigator.onLine||/fetch|network/i.test((e&&e.message)||'');
+const ld=d=>new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const today=()=>ld(new Date());
 async function call(fn,args,q){
+  if(/^(post_|record_)/.test(fn)&&!args.p_date)args.p_date=today();
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
   if(!error)return data||1;
   if(q&&bad(error)){const Q=JSON.parse(localStorage.q||'[]');Q.push({fn,args});localStorage.q=JSON.stringify(Q);return null}
@@ -267,11 +270,38 @@ async function repV(){
   const T=tb.data||[],g=c=>+(T.find(x=>x.code==c)||{balance:0}).balance;
   const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
   const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
-  $('#v').innerHTML=`<div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
+  $('#v').innerHTML=`<div class=card id=per></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
   <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
   <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
-  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>
-  <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`
+  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div><button class="b s" style="width:100%;margin-top:8px" onclick="backup()">تنزيل نسخة احتياطية (JSON)</button></div>
+  <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`;
+  loadPeriod(0)
+}
+async function loadPeriod(n,from,to){
+  if(!from)[from,to]=[ld(new Date(Date.now()-n*864e5)),today()];
+  const {data,error}=await db.rpc('period_report',{p_shop:S.shop.id,p_from:from,p_to:to});
+  if(error)return toast(error.message);
+  const g=c=>{const x=(data||[]).find(r=>r.code==c);return x?+x.credit-+x.debit:0};
+  const sales=g('4100'),cogs=-g('5100'),exp=-g('5200'),gross=sales-cogs;
+  $('#per').innerHTML=`<b>تقرير الفترة</b>
+  <div class=row style="margin:6px 0"><button class="b s" onclick="loadPeriod(0)">اليوم</button><button class="b s" onclick="loadPeriod(6)">7 أيام</button><button class="b s" onclick="loadPeriod(29)">30 يوماً</button></div>
+  <div class=row><input id=pf type=date value="${from}"><input id=pt2 type=date value="${to}"></div>
+  <button class="b s" style="width:100%;margin-bottom:6px" onclick="loadPeriod(0,$('#pf').value,$('#pt2').value)">عرض</button>
+  ${[['المبيعات',sales],['تكلفة البضاعة',cogs],['الربح الإجمالي',gross],['المصاريف',exp],['صافي الربح',gross-exp]].map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}
+  <div class=m>${from} ← ${to} · بالليرة</div>`
+}
+async function all(t){
+  let o=[],i=0;
+  for(;;){const {data,error}=await db.from(t).select('*').order('id').range(i,i+999);if(error)throw error;o=o.concat(data);if(data.length<1000)return o;i+=1000}
+}
+async function backup(){
+  try{
+    const d={exported_at:new Date().toISOString(),shop:S.shop};
+    for(const t of ['accounts','partners','products','sales','sale_items','purchases','purchase_items','stock_movements','journal_entries','journal_lines'])d[t]=await all(t);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(d)],{type:'application/json'}));
+    a.download='backup-'+today()+'.json';a.click();toast('تم تنزيل النسخة الاحتياطية ✓')
+  }catch(e){toast(e.message)}
 }
 async function expense(){
   const a=prompt('مبلغ المصروف بالليرة');if(!a)return;const d=prompt('البيان','مصروف');
