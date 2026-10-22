@@ -22,11 +22,15 @@ button.b.s{background:var(--b);color:var(--t)}
 .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)}
 .m{color:var(--m);font-size:13px}.neg{color:var(--r)}
 table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--b);text-align:start;font-size:13px}
+.strike{text-decoration:line-through}
+#rcpt{display:none}
+@media print{body>*:not(#rcpt){display:none!important}#rcpt{display:block;width:72mm;font:12px system-ui,Tahoma,sans-serif;color:#000}}
 #toast{position:fixed;bottom:16px;left:12px;right:12px;background:#222;color:#fff;padding:12px;border-radius:10px;display:none;z-index:9}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="rcpt"></div>
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
@@ -94,7 +98,7 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',prod:'المنتجات',debt:'الديون',rep:'التقارير'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
@@ -107,7 +111,7 @@ function go(k){
   S.tab=k;
   if(k=='sale'||k=='buy'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -159,25 +163,77 @@ async function post(){
   inv()
 }
 
+/* ---- سجل الفواتير ---- */
+async function histV(){
+  $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
+  const [s,p]=await Promise.all([
+    db.from('sales').select('id,sale_date,currency,total,paid,voided_at,created_at,partners(name),sale_items(qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
+    db.from('purchases').select('id,purchase_date,currency,total,paid,voided_at,created_at,partners(name),purchase_items(qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
+  S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({n:i.products?.name,q:i.qty,p:i.price}))})),
+    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
+    .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
+  $('#v').innerHTML=`<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
+}
+function showInv(k){
+  const x=S.hist[k];
+  $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</b>
+  <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
+  ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
+  <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+}
+async function voidInv(k){
+  const x=S.hist[k];
+  if(!confirm('إلغاء هذه الفاتورة؟ سيُعاد المخزون وتُسجَّل قيود عكسية.'))return;
+  const r=await call('void_invoice',{p_shop:S.shop.id,p_kind:x.kind,p_id:x.id});
+  if(r===undefined)return;
+  await refresh();toast('تم إلغاء الفاتورة ✓');histV()
+}
+function printInv(k){
+  const x=S.hist[k];
+  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
+  <table>${x.items.map(i=>`<tr><td>${esc(i.n)}<td>${fmt(i.q)}×${fmt(i.p)}<td>${fmt(i.q*i.p)}`).join('')}</table><hr>
+  <b>الإجمالي: ${fmt(x.total)} ${x.currency}</b><br>المدفوع: ${fmt(x.paid)}<br>المتبقي: ${fmt(x.total-x.paid)}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
+  print()
+}
+
 /* ---- المنتجات ---- */
 function prodV(){
   $('#v').innerHTML=`<div class=card><b>منتج جديد</b><input id=pn placeholder="الاسم"><input id=pb placeholder="الباركود (اختياري)">
   <div class=row><input id=pp type=number inputmode=decimal placeholder="سعر البيع"><select id=pc><option>SYP<option>USD</select></div>
   <input id=pm type=number inputmode=decimal placeholder="حد التنبيه للمخزون"><button class=b onclick="addProd()">حفظ</button></div>
   <div class=card>${S.prods.map(p=>`<div class=it onclick="editP('${p.id}')"><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)} · متوسط التكلفة ${fmt(p.avg_cost)}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا منتجات بعد. المخزون يبدأ بفاتورة شراء.</div>'}
-  <div class=m>اضغط على المنتج لتعديل سعر البيع</div></div>`
+  <div class=m>اضغط على المنتج لتعديله أو حذفه</div></div>`
 }
+const dupMsg=e=>e.code=='23505'?'هذا الباركود مسجّل لمنتج آخر':e.message;
 async function addProd(){
   const n=$('#pn').value.trim();if(!n)return toast('الاسم مطلوب');
+  if(S.prods.some(p=>p.name==n)&&!confirm('يوجد منتج بنفس الاسم. هل تريد إضافة منتج آخر بنفس الاسم؟'))return;
   const {error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,sale_price:+$('#pp').value||0,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0});
-  if(error)return toast(error.message);
+  if(error)return toast(dupMsg(error));
   await refresh();prodV()
 }
-async function editP(id){
-  const p=S.prods.find(x=>x.id==id),v=prompt('سعر البيع الجديد ('+p.sale_currency+')',p.sale_price);if(v===null)return;
-  const {error}=await db.from('products').update({sale_price:+v}).eq('id',id);
+function editP(id){
+  const p=S.prods.find(x=>x.id==id);
+  $('#v').innerHTML=`<div class=card><b>تعديل منتج</b><input id=en value="${esc(p.name)}"><input id=eb value="${esc(p.barcode||'')}" placeholder="الباركود">
+  <div class=row><input id=ep type=number inputmode=decimal value="${p.sale_price}"><select id=ec><option>SYP<option>USD</select></div>
+  <input id=ei type=number inputmode=decimal value="${p.min_stock}" placeholder="حد التنبيه للمخزون">
+  <div class=row><button class=b onclick="saveP('${p.id}')">حفظ</button><button class="b s" onclick="prodV()">رجوع</button></div>
+  <button class="b s neg" style="width:100%;margin-top:8px" onclick="delP('${p.id}')">حذف المنتج</button></div>`;
+  $('#ec').value=p.sale_currency
+}
+async function saveP(id){
+  const n=$('#en').value.trim();if(!n)return toast('الاسم مطلوب');
+  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:+$('#ep').value||0,sale_currency:$('#ec').value,min_stock:+$('#ei').value||0}).eq('id',id);
+  if(error)return toast(dupMsg(error));
+  await refresh();prodV();toast('تم الحفظ ✓')
+}
+async function delP(id){
+  const p=S.prods.find(x=>x.id==id);
+  if(!confirm('حذف "'+p.name+'"؟'+(p.stock_qty>0?'\nانتبه: له مخزون '+fmt(p.stock_qty)+' وسيختفي من القوائم.':'')+'\nالفواتير القديمة تبقى محفوظة.'))return;
+  const {error}=await db.from('products').update({active:false,barcode:null}).eq('id',id);
   if(error)return toast(error.message);
-  await refresh();prodV()
+  await refresh();prodV();toast('تم الحذف')
 }
 
 /* ---- الديون ---- */
@@ -231,4 +287,3 @@ boot();
 </script>
 </body>
 </html>
-
