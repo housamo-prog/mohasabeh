@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>محاسبة المحل</title>
+<style>
+:root{--bg:#f6f7f9;--c:#fff;--t:#1b1f24;--m:#6b7280;--p:#0f7b4f;--b:#e5e7eb;--r:#c0392b}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--c:#1e2327;--t:#e8eaed;--m:#9aa3ad;--b:#2d343a}}
+*{box-sizing:border-box}
+body{margin:0;font:15px system-ui,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--t)}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;background:var(--c);border-bottom:1px solid var(--b)}
+nav{display:flex;overflow-x:auto;background:var(--c);border-bottom:1px solid var(--b);position:sticky;top:0}
+nav button{flex:1;min-width:72px;padding:11px 6px;border:0;background:none;color:var(--m);font:inherit;border-bottom:3px solid transparent}
+nav button.on{color:var(--p);border-color:var(--p);font-weight:700}
+main{padding:12px;max-width:720px;margin:auto}
+.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:12px}
+input,select{width:100%;padding:10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t);font:inherit;margin:4px 0}
+button.b{padding:10px 14px;border:0;border-radius:8px;background:var(--p);color:#fff;font:inherit;font-weight:700}
+button.b.s{background:var(--b);color:var(--t)}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+.it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)}
+.m{color:var(--m);font-size:13px}.neg{color:var(--r)}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--b);text-align:start;font-size:13px}
+#toast{position:fixed;bottom:16px;left:12px;right:12px;background:#222;color:#fff;padding:12px;border-radius:10px;display:none;z-index:9}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const URL_='https://xeeqyedzueuzdlfsqjyh.supabase.co',KEY='sb_publishable_mELxzgngQxrZ3JZuyNJqGg_Aw7jGUEg';
+const db=supabase.createClient(URL_,KEY);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
+const uid=()=>crypto.randomUUID();
+let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'sale'};
+const rate=c=>c==='USD'?+S.shop.usd_rate:1;
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
+
+/* ---- الاتصال بالدوال + طابور الإرسال عند انقطاع الإنترنت ---- */
+const bad=e=>!navigator.onLine||/fetch|network/i.test((e&&e.message)||'');
+async function call(fn,args,q){
+  const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
+  if(!error)return data||1;
+  if(q&&bad(error)){const Q=JSON.parse(localStorage.q||'[]');Q.push({fn,args});localStorage.q=JSON.stringify(Q);return null}
+  toast(error.message)
+}
+async function flush(){
+  const Q=JSON.parse(localStorage.q||'[]');if(!Q.length||!navigator.onLine)return;
+  const keep=[];
+  for(const x of Q){
+    const {error}=await db.rpc(x.fn,x.args);
+    if(error&&bad(error))keep.push(x);
+    else if(error){localStorage.f=JSON.stringify([...JSON.parse(localStorage.f||'[]'),x]);toast('عملية مؤجلة رُفضت: '+error.message)}
+  }
+  localStorage.q=JSON.stringify(keep);
+  if(S.shop)await refresh();
+}
+addEventListener('online',flush);
+
+/* ---- الدخول ---- */
+async function boot(){const {data:{session}}=await db.auth.getSession();session?load():authView()}
+function authView(){
+  $('#app').innerHTML=`<main><div class=card><h2>محاسبة المحل</h2>
+  <input id=em type=email dir=ltr placeholder="الإيميل"><input id=pw type=password dir=ltr placeholder="كلمة السر (6 أحرف على الأقل)">
+  <div class=row><button class=b onclick="auth(0)">دخول</button><button class="b s" onclick="auth(1)">حساب جديد</button></div></div></main>`
+}
+async function auth(up){
+  const e=$('#em').value.trim(),p=$('#pw').value;
+  const {data,error}=up?await db.auth.signUp({email:e,password:p}):await db.auth.signInWithPassword({email:e,password:p});
+  if(error)return toast(error.message);
+  if(!data.session)return toast('تحقق من إيميلك لتأكيد الحساب');
+  load()
+}
+async function load(){
+  const {data}=await db.from('shops').select('*').limit(1);
+  if(!data||!data.length)return newShopView();
+  S.shop=data[0];await refresh();flush();shell()
+}
+async function refresh(){
+  const [a,b,c]=await Promise.all([
+    db.from('products').select('*').eq('active',true).order('name'),
+    db.from('partners').select('*').order('name'),
+    db.from('shops').select('*').eq('id',S.shop.id).single()]);
+  S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data
+}
+function newShopView(){
+  $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
+  <button class=b onclick="mk()">إنشاء (تجربة 14 يوماً)</button></div></main>`
+}
+async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
+
+/* ---- الهيكل ---- */
+const TABS={sale:'بيع',buy:'شراء',prod:'المنتجات',debt:'الديون',rep:'التقارير'};
+function shell(){
+  const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
+  $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
+  <button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>
+  <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
+  <nav>${Object.entries(TABS).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
+  go(S.tab)
+}
+function go(k){
+  S.tab=k;
+  if(k=='sale'||k=='buy'){if(S.mode!==k)S.cart=[];S.mode=k}
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
+  ({sale:inv,buy:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+}
+async function setRate(){
+  const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
+  const r=await call('set_usd_rate',{p_shop:S.shop.id,p_rate:+v});
+  if(r!==undefined){await refresh();shell();toast('تم تحديث سعر الدولار')}
+}
+
+/* ---- فاتورة بيع / شراء ---- */
+function inv(){
+  const sale=S.mode=='sale',list=S.parts.filter(p=>p.kind==(sale?'customer':'supplier'));
+  $('#v').innerHTML=`<div class=card><input id=q placeholder="ابحث بالاسم أو امسح الباركود" oninput="srch()" onkeydown="if(event.key=='Enter')pickBar()"><div id=res></div></div>
+  <div class=card><div id=cart></div>
+  <div class=row><select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
+  <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
+  <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
+  <button class=b style="width:100%" onclick="post()">${sale?'تسجيل البيع':'تسجيل الشراء'}</button></div>`;
+  $('#cur').value=S.cur;cartV();srch()
+}
+function srch(){
+  const q=($('#q').value||'').trim().toLowerCase();
+  const r=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)||p.barcode===q).slice(0,8);
+  $('#res').innerHTML=r.map(p=>`<div class=it onclick="add('${p.id}')"><span>${esc(p.name)}<br><span class=m>المخزون ${fmt(p.stock_qty)}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
+}
+function pickBar(){const q=$('#q').value.trim(),p=S.prods.find(x=>x.barcode===q);if(p){add(p.id);$('#q').value='';srch()}}
+function add(id){
+  const p=S.prods.find(x=>x.id==id),c=S.cart.find(x=>x.id==id);
+  if(c){c.qty++;return cartV()}
+  const base=S.mode=='sale'?p.sale_price*rate(p.sale_currency):+p.avg_cost;
+  S.cart.push({id,name:p.name,qty:1,base,price:+(base/rate(S.cur)).toFixed(4)});cartV()
+}
+function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base/rate(c)).toFixed(4));cartV()}
+const tot=()=>Math.round(S.cart.reduce((s,i)=>s+Math.round(i.qty*i.price*100)/100,0)*100)/100;
+function cartV(){
+  $('#cart').innerHTML=S.cart.map((i,k)=>`<div class=it><div style="flex:2">${esc(i.name)}</div>
+  <input style="flex:1" type=number inputmode=decimal value="${i.qty}" onchange="S.cart[${k}].qty=+this.value;cartV()">
+  <input style="flex:1.4" type=number inputmode=decimal value="${i.price}" onchange="S.cart[${k}].price=+this.value;cartV()">
+  <button class="b s" style="flex:0" onclick="S.cart.splice(${k},1);cartV()">✕</button></div>`).join('')
+  +`<h3>الإجمالي: ${fmt(tot())} ${S.cur}</h3>`
+}
+async function post(){
+  if(!S.cart.length)return toast('الفاتورة فارغة');
+  const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
+  const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
+    p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
+  const r=await call(sale?'post_sale':'post_purchase',args,true);
+  if(r===undefined)return;
+  S.cart=[];await refresh();
+  toast(r?'تم التسجيل ✓':'لا يوجد إنترنت: حُفظت العملية وسترسل تلقائياً');
+  inv()
+}
+
+/* ---- المنتجات ---- */
+function prodV(){
+  $('#v').innerHTML=`<div class=card><b>منتج جديد</b><input id=pn placeholder="الاسم"><input id=pb placeholder="الباركود (اختياري)">
+  <div class=row><input id=pp type=number inputmode=decimal placeholder="سعر البيع"><select id=pc><option>SYP<option>USD</select></div>
+  <input id=pm type=number inputmode=decimal placeholder="حد التنبيه للمخزون"><button class=b onclick="addProd()">حفظ</button></div>
+  <div class=card>${S.prods.map(p=>`<div class=it onclick="editP('${p.id}')"><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)} · متوسط التكلفة ${fmt(p.avg_cost)}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا منتجات بعد. المخزون يبدأ بفاتورة شراء.</div>'}
+  <div class=m>اضغط على المنتج لتعديل سعر البيع</div></div>`
+}
+async function addProd(){
+  const n=$('#pn').value.trim();if(!n)return toast('الاسم مطلوب');
+  const {error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,sale_price:+$('#pp').value||0,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0});
+  if(error)return toast(error.message);
+  await refresh();prodV()
+}
+async function editP(id){
+  const p=S.prods.find(x=>x.id==id),v=prompt('سعر البيع الجديد ('+p.sale_currency+')',p.sale_price);if(v===null)return;
+  const {error}=await db.from('products').update({sale_price:+v}).eq('id',id);
+  if(error)return toast(error.message);
+  await refresh();prodV()
+}
+
+/* ---- الديون ---- */
+async function debtV(){
+  const {data}=await db.from('partner_balances').select('*').order('name');
+  $('#v').innerHTML=`<div class=card><b>زبون / مورد جديد</b><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف">
+  <select id=ak><option value=customer>زبون<option value=supplier>مورد</select><button class=b onclick="addPart()">حفظ</button></div>
+  <div class=card>${(data||[]).map(p=>{const c=p.kind=='customer',v=c?p.receivable:p.payable;
+  return `<div class=it onclick="pay('${p.id}','${c?'receipt':'payment'}')"><span>${esc(p.name)}<br><span class=m>${c?'زبون':'مورد'}</span></span><b class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</b></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
+  <div class=m>الأرصدة بالليرة. اضغط على الاسم لتسجيل دفعة.</div></div>`
+}
+async function addPart(){
+  const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
+  const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value});
+  if(error)return toast(error.message);
+  await refresh();debtV()
+}
+async function pay(id,kind){
+  const a=prompt(kind=='receipt'?'مبلغ القبض من الزبون':'مبلغ الدفع للمورد');if(!a)return;
+  const cur=confirm('الدفعة بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
+  const r=await call('record_payment',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:kind,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
+  if(r!==undefined){toast('تم ✓');debtV()}
+}
+
+/* ---- التقارير ---- */
+async function repV(){
+  const [tb,dp,ls]=await Promise.all([
+    db.from('trial_balance').select('*').order('code'),
+    db.from('daily_profit').select('*').order('entry_date',{ascending:false}).limit(7),
+    db.from('low_stock').select('name,stock_qty')]);
+  const T=tb.data||[],g=c=>+(T.find(x=>x.code==c)||{balance:0}).balance;
+  const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
+  const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
+  $('#v').innerHTML=`<div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
+  <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
+  <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
+  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>
+  <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`
+}
+async function expense(){
+  const a=prompt('مبلغ المصروف بالليرة');if(!a)return;const d=prompt('البيان','مصروف');
+  const r=await call('record_expense',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:'SYP',p_rate:1,p_desc:d||'مصروف'},true);
+  if(r!==undefined)repV()
+}
+async function equity(dir){
+  const a=prompt(dir=='deposit'?'مبلغ رأس المال المُضاف (ليرة)':'مبلغ سحب المالك (ليرة)');if(!a)return;
+  const r=await call('record_equity',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:'SYP',p_rate:1,p_direction:dir},true);
+  if(r!==undefined)repV()
+}
+boot();
+</script>
+</body>
+</html>
+9
