@@ -26,7 +26,7 @@ button.b.s{background:var(--b);color:var(--t)}
 .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)}
 .m{color:var(--m);font-size:13px}.neg{color:var(--r)}
 table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--b);text-align:start;font-size:13px}
-.strike{text-decoration:line-through}
+.strike{text-decoration:line-through}.ok{color:var(--p)}
 #rcpt{display:none}
 @media print{body>*:not(#rcpt){display:none!important}#rcpt{display:block;width:72mm;font:12px system-ui,Tahoma,sans-serif;color:#000}}
 #toast{position:fixed;bottom:16px;left:12px;right:12px;background:#222;color:#fff;padding:12px;border-radius:10px;display:none;z-index:9}
@@ -114,20 +114,20 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',team:'الفريق'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
-  <nav>${Object.entries(TABS).filter(([k])=>S.role=='owner'||k=='sale'||k=='prod').map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
+  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
   go(S.tab)
 }
 function go(k){
   S.tab=k;
-  if(k=='sale'||k=='buy'){if(S.mode!==k)S.cart=[];S.mode=k}
+  if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,hist:histV,team:teamV,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -144,7 +144,8 @@ function inv(){
   <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
   <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
   <button class=b style="width:100%" onclick="post()">${sale?'تسجيل البيع':'تسجيل الشراء'}</button></div>`;
-  $('#cur').value=S.cur;cartV();srch()
+  $('#cur').value=S.cur;cartV();srch();
+  if(S.mode=='open'){$('#pt').style.display='none';$('#paid').style.display='none';document.querySelector('button[onclick="post()"]').textContent='تسجيل المخزون الافتتاحي'}
 }
 function srch(){
   const q=($('#q').value||'').trim().toLowerCase();
@@ -169,6 +170,7 @@ function cartV(){
 }
 async function post(){
   if(!S.cart.length)return toast('الفاتورة فارغة');
+  if(S.mode=='open')return postOpen();
   const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
@@ -177,6 +179,58 @@ async function post(){
   S.cart=[];await refresh();
   toast(r?'تم التسجيل ✓':'لا يوجد إنترنت: حُفظت العملية وسترسل تلقائياً');
   inv()
+}
+
+/* ---- المخزون والجرد ---- */
+function stockV(){
+  $('#v').innerHTML=`<div class=card><b>تهيئة محل قائم</b><div class=m>إذا كان عندك بضاعة موجودة من قبل، سجّلها كرصيد افتتاحي (لا يؤثر على الصندوق).</div>
+  <button class=b style="width:100%;margin-top:6px" onclick="go('open')">تسجيل مخزون افتتاحي</button></div>
+  <div class=card><b>جرد وتسوية الكميات</b><div class=m>اضغط على المنتج وأدخل الكمية الفعلية الموجودة</div>
+  <input id=sq placeholder="بحث" oninput="stockList()"><div id=sl></div></div>`;
+  stockList()
+}
+function stockList(){
+  const q=($('#sq').value||'').trim().toLowerCase();
+  $('#sl').innerHTML=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)).map(p=>`<div class=it onclick="adjust('${p.id}')"><span>${esc(p.name)}</span><b>${fmt(p.stock_qty)}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
+}
+async function adjust(id){
+  const p=S.prods.find(x=>x.id==id),v=prompt('الكمية الفعلية لـ "'+p.name+'" (النظام: '+fmt(p.stock_qty)+')',p.stock_qty);
+  if(v===null||v===''||isNaN(+v)||+v<0)return;
+  const r=await call('post_stock_adjust',{p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:+v,p_reason:'جرد'});
+  if(r!==undefined){await refresh();toast('تمت التسوية ✓');stockV()}
+}
+async function postOpen(){
+  const r=await call('post_opening_stock',{p_shop:S.shop.id,p_client:uid(),p_currency:S.cur,p_rate:rate(S.cur),p_items:S.cart.map(i=>({product_id:i.id,qty:i.qty,unit_cost:i.price}))},true);
+  if(r===undefined)return;
+  S.cart=[];await refresh();toast('تم تسجيل المخزون الافتتاحي ✓');go('stock')
+}
+
+/* ---- تفاصيل الزبون/المورد وكشف الحساب ---- */
+async function partnerV(id){
+  const p=S.parts.find(x=>x.id==id),c=p.kind=='customer';
+  const {data,error}=await db.rpc('partner_statement',{p_shop:S.shop.id,p_partner:id});
+  if(error)return toast(error.message);
+  S.stm=data||[];S.stp=p;
+  const bal=S.stm.length?+S.stm[S.stm.length-1].balance:0,v=c?bal:-bal;
+  $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${c?'زبون':'مورد'}</span>
+  <h3 class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</h3>
+  <div class=row><button class=b onclick="pay('${id}','${c?'receipt':'payment'}')">${c?'سند قبض':'سند دفع'}</button><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button></div>
+  <div class=row style="margin-top:8px"><button class="b s" onclick="printStm()">طباعة الكشف</button><button class="b s" onclick="debtV()">رجوع</button></div></div>
+  <div class=card><b>كشف الحساب</b>${S.stm.map(x=>{const up=c?+x.debit:+x.credit,dn=c?+x.credit:+x.debit;
+  return `<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${up>0?'<span class=neg>+'+fmt(up)+'</span>':'<span class=ok>-'+fmt(dn)+'</span>'}<br><span class=m>${fmt(c?x.balance:-x.balance)}</span></span></div>`}).join('')||'<div class=m>لا حركات</div>'}</div>`
+}
+async function openBal(id){
+  const a=prompt('الرصيد الافتتاحي (المبلغ المستحق سابقاً)');if(!a||isNaN(+a)||+a<=0)return;
+  const cur=confirm('بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
+  const r=await call('post_opening_partner',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
+  if(r!==undefined){toast('تم ✓');partnerV(id)}
+}
+function printStm(){
+  const p=S.stp,c=p.kind=='customer',last=S.stm.length?+S.stm[S.stm.length-1].balance:0;
+  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">كشف حساب: ${esc(p.name)}</div><hr>
+  <table>${S.stm.map(x=>`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${fmt(c?x.balance:-x.balance)}`).join('')}</table><hr>
+  <b>الرصيد: ${fmt(c?last:-last)}</b>`;
+  print()
 }
 
 /* ---- الفريق ---- */
@@ -278,8 +332,8 @@ async function debtV(){
   $('#v').innerHTML=`<div class=card><b>زبون / مورد جديد</b><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف">
   <select id=ak><option value=customer>زبون<option value=supplier>مورد</select><button class=b onclick="addPart()">حفظ</button></div>
   <div class=card>${(data||[]).map(p=>{const c=p.kind=='customer',v=c?p.receivable:p.payable;
-  return `<div class=it onclick="pay('${p.id}','${c?'receipt':'payment'}')"><span>${esc(p.name)}<br><span class=m>${c?'زبون':'مورد'}</span></span><b class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</b></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
-  <div class=m>الأرصدة بالليرة. اضغط على الاسم لتسجيل دفعة.</div></div>`
+  return `<div class=it onclick="partnerV('${p.id}')"><span>${esc(p.name)}<br><span class=m>${c?'زبون':'مورد'}</span></span><b class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</b></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
+  <div class=m>الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>`
 }
 async function addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -291,7 +345,7 @@ async function pay(id,kind){
   const a=prompt(kind=='receipt'?'مبلغ القبض من الزبون':'مبلغ الدفع للمورد');if(!a)return;
   const cur=confirm('الدفعة بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
   const r=await call('record_payment',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:kind,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
-  if(r!==undefined){toast('تم ✓');debtV()}
+  if(r!==undefined){toast('تم ✓');partnerV(id)}
 }
 
 /* ---- التقارير ---- */
