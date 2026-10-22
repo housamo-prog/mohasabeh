@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>إدارة الاشتراكات</title>
+<style>
+:root{--bg:#f6f7f9;--c:#fff;--t:#1b1f24;--m:#6b7280;--p:#0f7b4f;--b:#e5e7eb;--r:#c0392b}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--c:#1e2327;--t:#e8eaed;--m:#9aa3ad;--b:#2d343a}}
+*{box-sizing:border-box}
+body{margin:0;font:15px system-ui,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--t)}
+main{padding:12px;max-width:720px;margin:auto}
+.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:12px}
+input{width:100%;padding:10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t);font:inherit;margin:4px 0}
+button{padding:9px 12px;border:0;border-radius:8px;background:var(--p);color:#fff;font:inherit;font-weight:700}
+button.s{background:var(--b);color:var(--t)}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+.m{color:var(--m);font-size:13px}.neg{color:var(--r)}.ok{color:var(--p)}
+#toast{position:fixed;bottom:16px;left:12px;right:12px;background:#222;color:#fff;padding:12px;border-radius:10px;display:none}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const db=supabase.createClient('https://xeeqyedzueuzdlfsqjyh.supabase.co','sb_publishable_mELxzgngQxrZ3JZuyNJqGg_Aw7jGUEg');
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let SH=[];
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4000)}
+
+async function boot(){const {data:{session}}=await db.auth.getSession();session?load():loginView()}
+function loginView(){
+  $('#app').innerHTML=`<div class=card><h3>إدارة الاشتراكات</h3>
+  <input id=em type=email dir=ltr placeholder="الإيميل"><input id=pw type=password dir=ltr placeholder="كلمة السر">
+  <button style="width:100%" onclick="login()">دخول</button></div>`
+}
+async function login(){
+  const {error}=await db.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});
+  if(error)return toast(error.message);
+  load()
+}
+async function load(){
+  const {data,error}=await db.rpc('admin_list_shops');
+  if(error)return toast(error.message);
+  if(!data||!data.length){
+    $('#app').innerHTML=`<div class=card>لا توجد محلات، أو حسابك ليس مديراً. تأكد من تشغيل ملف phase1e_admin.sql وأنك دخلت بإيميل المدير.</div>
+    <button class=s onclick="db.auth.signOut().then(()=>location.reload())">خروج</button>`;return
+  }
+  SH=data;view()
+}
+const days=d=>Math.ceil((new Date(d)-new Date(new Date().toDateString()))/864e5);
+function view(){
+  const q=($('#q')?$('#q').value:'').trim().toLowerCase();
+  const list=SH.filter(s=>!q||s.name.toLowerCase().includes(q)||s.owner_email.toLowerCase().includes(q));
+  const act=SH.filter(s=>days(s.subscription_until)>=0).length;
+  $('#app').innerHTML=`<div class=card><b>${SH.length} محل</b> · <span class=ok>${act} فعّال</span> · <span class=neg>${SH.length-act} منتهي</span>
+  <input id=q placeholder="بحث بالاسم أو الإيميل" value="${esc(q)}" oninput="view();$('#q').focus()"></div>
+  ${list.map(s=>{const d=days(s.subscription_until);return `<div class=card><b>${esc(s.name)}</b><div class=m dir=ltr style="text-align:right">${esc(s.owner_email)}</div>
+  <div class=m>سُجّل ${s.created_at.slice(0,10)} · ${s.members} مستخدم</div>
+  <div class="${d<0?'neg':'ok'}" style="margin:6px 0"><b>${d<0?'انتهى منذ '+(-d)+' يوم':'ينتهي بعد '+d+' يوم'}</b> <span class=m>(${s.subscription_until})</span></div>
+  <div class=row><button onclick="ext('${s.id}',30)">+30 يوم</button><button onclick="ext('${s.id}',90)">+90</button><button onclick="ext('${s.id}',365)">+سنة</button><button class=s onclick="custom('${s.id}')">يدوي</button></div></div>`}).join('')}
+  <button class=s onclick="db.auth.signOut().then(()=>location.reload())">خروج</button>`
+}
+async function ext(id,d){
+  const s=SH.find(x=>x.id==id);
+  if(!confirm('تمديد اشتراك "'+s.name+'" بمقدار '+d+' يوم؟'))return;
+  const {data,error}=await db.rpc('admin_extend',{p_shop:id,p_days:d});
+  if(error)return toast(error.message);
+  toast('تم ✓ ينتهي الآن: '+data);load()
+}
+function custom(id){const v=prompt('عدد الأيام (يمكن أن يكون سالباً للتصحيح)','30');if(v)ext(id,parseInt(v,10))}
+boot();
+</script>
+</body>
+</html>
