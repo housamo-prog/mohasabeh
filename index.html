@@ -393,9 +393,11 @@ function mfgV(){
   <div class=card><b>وصفة تصنيع</b><div class=m>اختر المنتج الجاهز، ثم أضف المواد اللازمة لإنتاج وحدة واحدة منه.</div>
   <select id=rp onchange="rcpLoad()">${po}</select><div id=rc></div>
   <div class=row><select id=rcs>${po}</select><input id=rcq type=number inputmode=decimal placeholder="الكمية لكل وحدة"></div>
-  <div class=row><button class="b s" onclick="rcpAdd()">+ مكوّن</button><button class=b onclick="rcpSave()">حفظ الوصفة</button></div></div>`;
+  <div class=row><button class="b s" onclick="rcpAdd()">+ مكوّن</button><button class=b onclick="rcpSave()">حفظ الوصفة</button></div></div>
+  <div class=card id=pl></div>`;
   if(withB.length)mfgPrev();
-  if(S.prods.length)rcpLoad()
+  if(S.prods.length)rcpLoad();
+  prodList()
 }
 function mfgPrev(){
   const id=$('#mp').value,q=+$('#mq').value||0,x=+$('#mx').value||0;
@@ -406,6 +408,16 @@ function mfgPrev(){
     return `<div class=it><span>${esc(p.name)}</span><span class="${have<n?'neg':''}">${fmt(n)} / متوفر ${fmt(have)}</span></div>`});
   $('#mprev').innerHTML=rows.join('')+`<div class=it><span>تكلفة المواد</span><b>${fmt(mat)}</b></div>
   <div class=it><span>تكلفة الوحدة التقريبية</span><b>${q?fmt((mat+x)/q):'-'}</b></div>`
+}
+async function prodList(){
+  const {data}=await db.from('production_orders').select('id,prod_date,qty,total_cost,voided_at,product_id').order('created_at',{ascending:false}).limit(10);
+  const el=$('#pl');if(!el)return;
+  el.innerHTML='<b>آخر أوامر التصنيع</b>'+((data||[]).map(o=>`<div class=it><span>${esc(pname(o.product_id))} × ${fmt(o.qty)}<br><span class=m>${o.prod_date} · التكلفة ${fmt(o.total_cost)}</span></span>${o.voided_at?'<span class="neg strike">ملغى</span>':`<button class="b s neg" style="flex:0" onclick="voidProd('${o.id}')">إلغاء</button>`}</div>`).join('')||'<div class=m>لا أوامر بعد</div>')
+}
+async function voidProd(id){
+  if(!confirm('إلغاء أمر التصنيع؟ سترجع المواد الخام ويُسحب المنتج الجاهز من المستودع.'))return;
+  const r=await call('void_production',{p_shop:S.shop.id,p_order:id});
+  if(r!==undefined){await refresh();toast('تم إلغاء أمر التصنيع ✓');mfgV()}
 }
 async function doProd(){
   const id=$('#mp').value,q=+$('#mq').value;
@@ -576,12 +588,23 @@ async function repV(){
   const T=tb.data||[],g=c=>+(T.find(x=>x.sys_code==c)||{balance:0}).balance;
   const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
   const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
-  $('#v').innerHTML=`<div class=card id=per></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
+  $('#v').innerHTML=`<div class=card id=per></div><div class=card id=vl></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
   <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
   <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
   <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div><button class="b s" style="width:100%;margin-top:8px" onclick="backup()">تنزيل نسخة احتياطية (JSON)</button><div id=bk class=m style="margin-top:6px"></div></div>
   <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`;
-  loadPeriod(0)
+  loadPeriod(0);vchList()
+}
+async function vchList(){
+  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id});
+  const el=$('#vl');if(!el)return;
+  const T={receipt:'سند قبض',payment:'سند دفع',expense:'مصروف',equity:'رأس مال/سحب'};
+  el.innerHTML='<b>آخر السندات</b>'+(error?'<div class=m>شغّل ملف phase1m لتفعيل هذا القسم</div>':(data||[]).map(v=>`<div class=it><span>${T[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${fmt(v.amount)}</b>${v.voided?'':`<br><button class="b s neg" style="padding:4px 10px" onclick="voidVch('${v.id}')">إلغاء</button>`}</span></div>`).join('')||'<div class=m>لا سندات بعد</div>')
+}
+async function voidVch(id){
+  if(!confirm('إلغاء هذا السند؟ سيُسجَّل قيد عكسي.'))return;
+  const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
+  if(r!==undefined){toast('تم إلغاء السند ✓');repV()}
 }
 async function loadPeriod(n,from,to){
   if(!from)[from,to]=[ld(new Date(Date.now()-n*864e5)),today()];
