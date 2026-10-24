@@ -105,6 +105,8 @@ async function refresh(){
   const cm={};
   if(S.role=='owner'){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
   S.prods.forEach(p=>p.avg_cost=cm[p.id]||0);
+  S.bom=[];
+  if(S.role=='owner'){const bb=await db.from('bom_items').select('product_id,component_id,qty');S.bom=bb.data||[]}
   const [w,l]=await Promise.all([
     db.from('warehouses').select('id,name,is_default').order('created_at'),
     db.from('stock_levels').select('product_id,warehouse_id,qty')]);
@@ -121,7 +123,7 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',open:'افتتاحي'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
@@ -134,7 +136,7 @@ function go(k){
   S.tab=k;
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -257,6 +259,57 @@ function printStm(){
   <table>${S.stm.map(x=>`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${fmt(c?x.balance:-x.balance)}`).join('')}</table><hr>
   <b>الرصيد: ${fmt(c?last:-last)}</b>`;
   print()
+}
+
+/* ---- التصنيع ---- */
+const pname=id=>(S.prods.find(p=>p.id==id)||{name:'؟'}).name;
+function mfgV(){
+  const withB=[...new Set(S.bom.map(b=>b.product_id))],po=S.prods.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('');
+  $('#v').innerHTML=`<div class=card><b>تنفيذ تصنيع</b>
+  <div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.wh)||{}).name||'')} (تُخصم منه المواد ويُضاف إليه المنتج)</div>
+  ${withB.length?`<select id=mp onchange="mfgPrev()">${withB.map(id=>`<option value=${id}>${esc(pname(id))}`).join('')}</select>
+  <input id=mq type=number inputmode=decimal placeholder="الكمية المنتَجة" oninput="mfgPrev()">
+  <input id=mx type=number inputmode=decimal placeholder="مصاريف إضافية بالليرة (أجور، كهرباء) - اختياري" oninput="mfgPrev()">
+  <div id=mprev></div><button class=b style="width:100%;margin-top:6px" onclick="doProd()">تنفيذ التصنيع</button>`:'<div class=m>أنشئ وصفة تصنيع أولاً من البطاقة التالية.</div>'}</div>
+  <div class=card><b>وصفة تصنيع</b><div class=m>اختر المنتج الجاهز، ثم أضف المواد اللازمة لإنتاج وحدة واحدة منه.</div>
+  <select id=rp onchange="rcpLoad()">${po}</select><div id=rc></div>
+  <div class=row><select id=rcs>${po}</select><input id=rcq type=number inputmode=decimal placeholder="الكمية لكل وحدة"></div>
+  <div class=row><button class="b s" onclick="rcpAdd()">+ مكوّن</button><button class=b onclick="rcpSave()">حفظ الوصفة</button></div></div>`;
+  if(withB.length)mfgPrev();
+  if(S.prods.length)rcpLoad()
+}
+function mfgPrev(){
+  const id=$('#mp').value,q=+$('#mq').value||0,x=+$('#mx').value||0;
+  let mat=0;
+  const rows=S.bom.filter(b=>b.product_id==id).map(b=>{
+    const p=S.prods.find(z=>z.id==b.component_id)||{},n=+b.qty*q,have=lvl(b.component_id,S.wh);
+    mat+=n*(p.avg_cost||0);
+    return `<div class=it><span>${esc(p.name)}</span><span class="${have<n?'neg':''}">${fmt(n)} / متوفر ${fmt(have)}</span></div>`});
+  $('#mprev').innerHTML=rows.join('')+`<div class=it><span>تكلفة المواد</span><b>${fmt(mat)}</b></div>
+  <div class=it><span>تكلفة الوحدة التقريبية</span><b>${q?fmt((mat+x)/q):'-'}</b></div>`
+}
+async function doProd(){
+  const id=$('#mp').value,q=+$('#mq').value;
+  if(!id||!(q>0))return toast('اختر المنتج وأدخل الكمية');
+  const r=await call('post_production',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_qty:q,p_extra:+$('#mx').value||0});
+  if(r!==undefined){await refresh();toast('تم التصنيع ✓');mfgV()}
+}
+function rcpLoad(){
+  S.rc=S.bom.filter(b=>b.product_id==$('#rp').value).map(b=>({id:b.component_id,qty:+b.qty}));rcpDraw()
+}
+function rcpDraw(){
+  $('#rc').innerHTML=S.rc.map((x,k)=>`<div class=it><span>${esc(pname(x.id))}</span><span>${fmt(x.qty)} <button class="b s" style="padding:4px 10px" onclick="S.rc.splice(${k},1);rcpDraw()">✕</button></span></div>`).join('')||'<div class=m>لا مكونات بعد</div>'
+}
+function rcpAdd(){
+  const id=$('#rcs').value,q=+$('#rcq').value;
+  if(!(q>0))return toast('أدخل الكمية');
+  if(id==$('#rp').value)return toast('المنتج لا يكون مكوّناً لنفسه');
+  const e=S.rc.find(x=>x.id==id);e?e.qty+=q:S.rc.push({id,qty:q});
+  $('#rcq').value='';rcpDraw()
+}
+async function rcpSave(){
+  const r=await call('set_bom',{p_shop:S.shop.id,p_product:$('#rp').value,p_items:S.rc.map(x=>({component_id:x.id,qty:x.qty}))});
+  if(r!==undefined){await refresh();toast('تم حفظ الوصفة ✓');mfgV()}
 }
 
 /* ---- الفريق ---- */
