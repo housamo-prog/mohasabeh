@@ -134,7 +134,7 @@ function shell(){
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
-  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
+  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
   go(S.tab)
 }
 function go(k){
@@ -159,6 +159,7 @@ function inv(){
   <div class=row><select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
   <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
   <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
+  ${sale&&!S.edit?`<label class=m style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type=checkbox id=ap style="width:auto;margin:0" ${localStorage.ap=='1'?'checked':''} onchange="localStorage.ap=this.checked?'1':'0'"> طباعة الوصل بعد البيع</label>`:''}
   <button class=b style="width:100%" onclick="post()">${sale?'تسجيل البيع':'تسجيل الشراء'}</button></div>`;
   $('#cur').value=S.cur;cartV();srch();
   if(S.edit){
@@ -209,9 +210,11 @@ async function post(){
   args.p_wh=S.wh;
   const r=await call(sale?'post_sale_wh':'post_purchase_wh',args,true);
   if(r===undefined)return;
+  const snap=sale&&r&&$('#ap')&&$('#ap').checked?{kind:'sale',date:today(),currency:S.cur,total:t,paid,items:S.cart.map(i=>({n:i.name,q:i.qty,p:i.price})),partners:{name:$('#pt').value?$('#pt').selectedOptions[0].text:''}}:null;
   S.cart=[];await refresh();
   toast(r?'تم التسجيل ✓':'لا يوجد إنترنت: حُفظت العملية وسترسل تلقائياً');
-  inv()
+  inv();
+  if(snap)printObj(snap)
 }
 
 /* ---- المخزون والجرد ---- */
@@ -455,12 +458,21 @@ async function rmMember(u){
 /* ---- سجل الفواتير ---- */
 async function histV(){
   $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
+  if(S.role!='owner'){
+    const {data,error}=await db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:40});
+    if(error)return toast(error.message);
+    S.hist=(data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,partners:{name:x.partner_name}}));
+    return histList()
+  }
   const [s,p]=await Promise.all([
     db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),sale_items(product_id,qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
     db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),purchase_items(product_id,qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
   S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price}))})),
     ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
     .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
+  histList()
+}
+function histList(){
   $('#v').innerHTML=`<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
 }
 function showInv(k){
@@ -469,7 +481,7 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
   <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
-  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||S.role!='owner'?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||S.role!='owner'?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||S.role!='owner'?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
@@ -485,8 +497,8 @@ async function voidInv(k){
   if(r===undefined)return;
   await refresh();toast('تم إلغاء الفاتورة ✓');histV()
 }
-function printInv(k){
-  const x=S.hist[k];
+function printInv(k){printObj(S.hist[k])}
+function printObj(x){
   $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
   <table>${x.items.map(i=>`<tr><td>${esc(i.n)}<td>${fmt(i.q)}×${fmt(i.p)}<td>${fmt(i.q*i.p)}`).join('')}</table><hr>
   <b>الإجمالي: ${fmt(x.total)} ${x.currency}</b><br>المدفوع: ${fmt(x.paid)}<br>المتبقي: ${fmt(x.total-x.paid)}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
