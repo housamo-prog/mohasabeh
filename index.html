@@ -96,8 +96,8 @@ async function load(){
   if(!data||!data.length)return newShopView();
   S.shop=data[0];
   const {data:{user}}=await db.auth.getUser();
-  const m=await db.from('shop_members').select('role').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
-  S.role=(m.data||{}).role||'cashier';
+  const m=await db.from('shop_members').select('role,warehouse_id').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
+  S.role=(m.data||{}).role||'cashier';S.fixedWh=(m.data||{}).warehouse_id||null;
   await refresh();flush();shell()
 }
 async function refresh(){
@@ -117,6 +117,7 @@ async function refresh(){
   S.whs=w.data||[];S.lv={};
   (l.data||[]).forEach(x=>S.lv[x.product_id+'|'+x.warehouse_id]=+x.qty);
   if(!S.whs.find(x=>x.id==S.wh)){const sv=localStorage.wh;S.wh=(S.whs.find(x=>x.id==sv)||S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null}
+  if(S.fixedWh&&S.whs.find(x=>x.id==S.fixedWh))S.wh=S.fixedWh
 }
 function newShopView(){
   $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
@@ -154,7 +155,7 @@ function inv(){
   const sale=S.mode=='sale',list=S.parts.filter(p=>p.kind==(sale?'customer':'supplier'));
   $('#v').innerHTML=`<div class=card><div class=row><input id=q placeholder="ابحث بالاسم أو امسح الباركود" oninput="srch()" onkeydown="if(event.key=='Enter')pickBar()"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanInv()">📷</button></div><div id=res></div></div>
   <div class=card><div id=cart></div>
-  ${S.whs.length>1?`<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
+  ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:S.whs.length>1?`<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
   <div class=row><select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
   <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
   <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
@@ -433,7 +434,12 @@ async function teamV(){
   if(error)return toast(error.message);
   $('#v').innerHTML=`<div class=card><b>إضافة كاشير</b><div class=m>يجب أن يكون قد أنشأ حساباً بالموقع بهذا الإيميل</div>
   <input id=ce type=email dir=ltr placeholder="إيميل الكاشير"><button class=b style="width:100%" onclick="addCashier()">إضافة</button></div>
-  <div class=card>${(data||[]).map(m=>`<div class=it><span dir=ltr>${esc(m.email)}<br><span class=m>${m.role=='owner'?'مالك':'كاشير'}</span></span>${m.role=='owner'?'':`<button class="b s neg" style="flex:0" onclick="rmMember('${m.user_id}')">إزالة</button>`}</div>`).join('')}</div>`
+  <div class=card>${(data||[]).map(m=>`<div class=it><span dir=ltr>${esc(m.email)}<br><span class=m>${m.role=='owner'?'مالك':'كاشير'}</span></span>${m.role=='owner'?'':`${S.whs.length>1?`<select style="width:auto;flex:0" onchange="setMW('${m.user_id}',this.value)"><option value="">أي مستودع</option>${S.whs.map(w=>`<option value=${w.id} ${w.id==m.warehouse_id?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}<button class="b s neg" style="flex:0" onclick="rmMember('${m.user_id}')">إزالة</button>`}</div>`).join('')}</div>
+  ${S.whs.length>1?'<div class=m style="margin:0 4px">اختر مستودعاً للكاشير لتثبيت مبيعاته عليه، أو اتركه "أي مستودع" ليختار بنفسه.</div>':''}`
+}
+async function setMW(u,w){
+  const r=await call('set_member_wh',{p_shop:S.shop.id,p_user:u,p_wh:w||null});
+  if(r!==undefined)toast('تم الحفظ ✓')
 }
 async function addCashier(){
   const e=$('#ce').value.trim();if(!e)return;
