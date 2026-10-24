@@ -44,7 +44,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
 const uid=()=>crypto.randomUUID();
-let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'sale'};
+let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'sale',wh:localStorage.wh||null,whs:[],lv:{}};
+const lvl=(p,w)=>S.lv[p+'|'+w]||0;
 const rate=c=>c==='USD'?+S.shop.usd_rate:1;
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 
@@ -57,7 +58,7 @@ async function call(fn,args,q){
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
   if(!error)return data||1;
   if(q&&bad(error)){const Q=JSON.parse(localStorage.q||'[]');Q.push({fn,args});localStorage.q=JSON.stringify(Q);return null}
-  toast(error.message)
+  toast(/stock_levels|check constraint/.test(error.message)?'الكمية غير كافية في هذا المستودع':error.message)
 }
 async function flush(){
   const Q=JSON.parse(localStorage.q||'[]');if(!Q.length||!navigator.onLine)return;
@@ -103,7 +104,13 @@ async function refresh(){
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
   const cm={};
   if(S.role=='owner'){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
-  S.prods.forEach(p=>p.avg_cost=cm[p.id]||0)
+  S.prods.forEach(p=>p.avg_cost=cm[p.id]||0);
+  const [w,l]=await Promise.all([
+    db.from('warehouses').select('id,name,is_default').order('created_at'),
+    db.from('stock_levels').select('product_id,warehouse_id,qty')]);
+  S.whs=w.data||[];S.lv={};
+  (l.data||[]).forEach(x=>S.lv[x.product_id+'|'+x.warehouse_id]=+x.qty);
+  if(!S.whs.find(x=>x.id==S.wh))S.wh=(S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null
 }
 function newShopView(){
   $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
@@ -140,6 +147,7 @@ function inv(){
   const sale=S.mode=='sale',list=S.parts.filter(p=>p.kind==(sale?'customer':'supplier'));
   $('#v').innerHTML=`<div class=card><input id=q placeholder="ابحث بالاسم أو امسح الباركود" oninput="srch()" onkeydown="if(event.key=='Enter')pickBar()"><div id=res></div></div>
   <div class=card><div id=cart></div>
+  ${S.whs.length>1?`<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
   <div class=row><select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
   <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
   <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
@@ -150,7 +158,7 @@ function inv(){
 function srch(){
   const q=($('#q').value||'').trim().toLowerCase();
   const r=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)||p.barcode===q).slice(0,8);
-  $('#res').innerHTML=r.map(p=>`<div class=it onclick="add('${p.id}')"><span>${esc(p.name)}<br><span class=m>المخزون ${fmt(p.stock_qty)}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
+  $('#res').innerHTML=r.map(p=>`<div class=it onclick="add('${p.id}')"><span>${esc(p.name)}<br><span class=m>المخزون ${fmt(lvl(p.id,S.wh))}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
 }
 function pickBar(){const q=$('#q').value.trim(),p=S.prods.find(x=>x.barcode===q);if(p){add(p.id);$('#q').value='';srch()}}
 function add(id){
@@ -174,7 +182,8 @@ async function post(){
   const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
-  const r=await call(sale?'post_sale':'post_purchase',args,true);
+  args.p_wh=S.wh;
+  const r=await call(sale?'post_sale_wh':'post_purchase_wh',args,true);
   if(r===undefined)return;
   S.cart=[];await refresh();
   toast(r?'تم التسجيل ✓':'لا يوجد إنترنت: حُفظت العملية وسترسل تلقائياً');
@@ -183,24 +192,41 @@ async function post(){
 
 /* ---- المخزون والجرد ---- */
 function stockV(){
-  $('#v').innerHTML=`<div class=card><b>تهيئة محل قائم</b><div class=m>إذا كان عندك بضاعة موجودة من قبل، سجّلها كرصيد افتتاحي (لا يؤثر على الصندوق).</div>
+  const o=S.whs.map(w=>`<option value=${w.id}>${esc(w.name)}`).join(''),po=S.prods.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('');
+  $('#v').innerHTML=`<div class=card><b>المستودعات</b>
+  <select id=sw onchange="S.wh=this.value;localStorage.wh=S.wh;stockList()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>
+  <div class=m>المستودع المحدد هو الذي تُسجَّل عليه الفواتير والجرد.</div>
+  <button class="b s" style="width:100%;margin-top:6px" onclick="addWh()">+ مستودع جديد</button>
+  ${S.whs.length>1&&S.prods.length?`<hr><b>تحويل بضاعة بين مستودعين</b><div class=row><select id=tf>${o}</select><select id=tt>${o}</select></div>
+  <select id=tp>${po}</select><input id=tq type=number inputmode=decimal placeholder="الكمية"><button class=b style="width:100%" onclick="doTransfer()">تحويل</button>`:''}</div>
+  <div class=card><b>تهيئة محل قائم</b><div class=m>إذا كان عندك بضاعة موجودة من قبل، سجّلها كرصيد افتتاحي (لا يؤثر على الصندوق) في المستودع المحدد.</div>
   <button class=b style="width:100%;margin-top:6px" onclick="go('open')">تسجيل مخزون افتتاحي</button></div>
-  <div class=card><b>جرد وتسوية الكميات</b><div class=m>اضغط على المنتج وأدخل الكمية الفعلية الموجودة</div>
+  <div class=card><b>جرد وتسوية الكميات</b><div class=m>اضغط على المنتج وأدخل الكمية الفعلية الموجودة في المستودع المحدد</div>
   <input id=sq placeholder="بحث" oninput="stockList()"><div id=sl></div></div>`;
   stockList()
 }
 function stockList(){
   const q=($('#sq').value||'').trim().toLowerCase();
-  $('#sl').innerHTML=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)).map(p=>`<div class=it onclick="adjust('${p.id}')"><span>${esc(p.name)}</span><b>${fmt(p.stock_qty)}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
+  $('#sl').innerHTML=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)).map(p=>`<div class=it onclick="adjust('${p.id}')"><span>${esc(p.name)}<br><span class=m>الإجمالي بكل المستودعات ${fmt(p.stock_qty)}</span></span><b>${fmt(lvl(p.id,S.wh))}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
 }
 async function adjust(id){
-  const p=S.prods.find(x=>x.id==id),v=prompt('الكمية الفعلية لـ "'+p.name+'" (النظام: '+fmt(p.stock_qty)+')',p.stock_qty);
+  const p=S.prods.find(x=>x.id==id),cur=lvl(id,S.wh),v=prompt('الكمية الفعلية لـ "'+p.name+'" بهذا المستودع (النظام: '+fmt(cur)+')',cur);
   if(v===null||v===''||isNaN(+v)||+v<0)return;
-  const r=await call('post_stock_adjust',{p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:+v,p_reason:'جرد'});
+  const r=await call('post_stock_adjust_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:+v,p_reason:'جرد'});
   if(r!==undefined){await refresh();toast('تمت التسوية ✓');stockV()}
 }
+async function addWh(){
+  const n=prompt('اسم المستودع الجديد');if(!n||!n.trim())return;
+  const r=await call('add_warehouse',{p_shop:S.shop.id,p_name:n});
+  if(r!==undefined){await refresh();toast('تمت الإضافة ✓');stockV()}
+}
+async function doTransfer(){
+  const q=+$('#tq').value;if(!(q>0))return toast('أدخل الكمية');
+  const r=await call('transfer_stock',{p_shop:S.shop.id,p_client:uid(),p_product:$('#tp').value,p_from:$('#tf').value,p_to:$('#tt').value,p_qty:q});
+  if(r!==undefined){await refresh();toast('تم التحويل ✓');stockV()}
+}
 async function postOpen(){
-  const r=await call('post_opening_stock',{p_shop:S.shop.id,p_client:uid(),p_currency:S.cur,p_rate:rate(S.cur),p_items:S.cart.map(i=>({product_id:i.id,qty:i.qty,unit_cost:i.price}))},true);
+  const r=await call('post_opening_stock_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_currency:S.cur,p_rate:rate(S.cur),p_items:S.cart.map(i=>({product_id:i.id,qty:i.qty,unit_cost:i.price}))},true);
   if(r===undefined)return;
   S.cart=[];await refresh();toast('تم تسجيل المخزون الافتتاحي ✓');go('stock')
 }
