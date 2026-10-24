@@ -49,6 +49,7 @@ const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
 const uid=()=>crypto.randomUUID();
 let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'sale',wh:localStorage.wh||null,whs:[],lv:{}};
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
+const whHint=id=>S.whs.filter(w=>w.id!=S.wh&&lvl(id,w.id)>0).map(w=>w.name+' ('+fmt(lvl(id,w.id))+')').join('، ');
 const rate=c=>c==='USD'?+S.shop.usd_rate:1;
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 
@@ -115,7 +116,7 @@ async function refresh(){
     db.from('stock_levels').select('product_id,warehouse_id,qty')]);
   S.whs=w.data||[];S.lv={};
   (l.data||[]).forEach(x=>S.lv[x.product_id+'|'+x.warehouse_id]=+x.qty);
-  if(!S.whs.find(x=>x.id==S.wh))S.wh=(S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null
+  if(!S.whs.find(x=>x.id==S.wh)){const sv=localStorage.wh;S.wh=(S.whs.find(x=>x.id==sv)||S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null}
 }
 function newShopView(){
   $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
@@ -168,7 +169,7 @@ function inv(){
 function srch(){
   const q=($('#q').value||'').trim().toLowerCase();
   const r=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)||p.barcode===q).slice(0,8);
-  $('#res').innerHTML=r.map(p=>`<div class=it onclick="add('${p.id}')"><span>${esc(p.name)}<br><span class=m>المخزون ${fmt(lvl(p.id,S.wh))}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
+  $('#res').innerHTML=r.map(p=>`<div class=it onclick="add('${p.id}')"><span>${esc(p.name)}<br><span class=m>المخزون ${fmt(lvl(p.id,S.wh))}${S.whs.length>1?' · الإجمالي '+fmt(p.stock_qty):''}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
 }
 function pickBar(){const q=$('#q').value.trim(),p=S.prods.find(x=>x.barcode===q);if(p){add(p.id);$('#q').value='';srch()}}
 function add(id){
@@ -190,6 +191,12 @@ async function post(){
   if(!S.cart.length)return toast('الفاتورة فارغة');
   if(S.mode=='open')return postOpen();
   const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
+  if(sale&&!S.edit){
+    const chk=()=>{for(const i of S.cart){const have=lvl(i.id,S.wh);if(i.qty>have){const h=whHint(i.id);return '"'+i.name+'": المطلوب '+fmt(i.qty)+' والمتوفر بهذا المستودع '+fmt(have)+(h?'. متوفر في: '+h+' (غيّر المستودع من القائمة)':'')}}return ''};
+    let bad=chk();
+    if(bad&&navigator.onLine){await refresh();bad=chk()}
+    if(bad)return toast(bad)
+  }
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
   if(S.edit){
