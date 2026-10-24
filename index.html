@@ -126,7 +126,7 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',open:'افتتاحي'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',acc:'الحسابات',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
@@ -137,9 +137,10 @@ function shell(){
 }
 function go(k){
   S.tab=k;
+  if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -158,6 +159,10 @@ function inv(){
   <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
   <button class=b style="width:100%" onclick="post()">${sale?'تسجيل البيع':'تسجيل الشراء'}</button></div>`;
   $('#cur').value=S.cur;cartV();srch();
+  if(S.edit){
+    $('#pt').value=S.edit.partner||'';$('#paid').value=S.edit.paid;
+    $('#v').insertAdjacentHTML('afterbegin',`<div class=card style="border-color:var(--p)"><b>تعديل فاتورة</b><div class=m>تُلغى الفاتورة القديمة وتُسجَّل هذه بدلاً منها بنفس التاريخ. عدّل البنود ثم اضغط التسجيل.</div><button class="b s" style="margin-top:6px" onclick="S.edit=null;S.cart=[];go('hist')">إلغاء التعديل</button></div>`)
+  }
   if(S.mode=='open'){$('#pt').style.display='none';$('#paid').style.display='none';document.querySelector('button[onclick="post()"]').textContent='تسجيل المخزون الافتتاحي'}
 }
 function srch(){
@@ -187,6 +192,12 @@ async function post(){
   const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
+  if(S.edit){
+    const e=S.edit;args.p_old=e.id;args.p_date=e.date;if(S.cur===e.cur)args.p_rate=e.rate;
+    const r2=await call(sale?'edit_sale':'edit_purchase',args);
+    if(r2===undefined)return;
+    S.edit=null;S.cart=[];await refresh();toast('تم تعديل الفاتورة ✓');return go('hist')
+  }
   args.p_wh=S.wh;
   const r=await call(sale?'post_sale_wh':'post_purchase_wh',args,true);
   if(r===undefined)return;
@@ -239,16 +250,13 @@ async function postOpen(){
 /* ---- تفاصيل الزبون/المورد وكشف الحساب ---- */
 async function partnerV(id){
   const p=S.parts.find(x=>x.id==id),c=p.kind=='customer';
-  const {data,error}=await db.rpc('partner_statement',{p_shop:S.shop.id,p_partner:id});
-  if(error)return toast(error.message);
-  S.stm=data||[];S.stp=p;
-  const bal=S.stm.length?+S.stm[S.stm.length-1].balance:0,v=c?bal:-bal;
+  const {data}=await db.from('partner_balances').select('receivable,payable').eq('id',id).single();
+  const v=data?(c?+data.receivable:+data.payable):0;
   $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${c?'زبون':'مورد'}</span>
   <h3 class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</h3>
   <div class=row><button class=b onclick="pay('${id}','${c?'receipt':'payment'}')">${c?'سند قبض':'سند دفع'}</button><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button></div>
-  <div class=row style="margin-top:8px"><button class="b s" onclick="printStm()">طباعة الكشف</button><button class="b s" onclick="debtV()">رجوع</button></div></div>
-  <div class=card><b>كشف الحساب</b>${S.stm.map(x=>{const up=c?+x.debit:+x.credit,dn=c?+x.credit:+x.debit;
-  return `<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${up>0?'<span class=neg>+'+fmt(up)+'</span>':'<span class=ok>-'+fmt(dn)+'</span>'}<br><span class=m>${fmt(c?x.balance:-x.balance)}</span></span></div>`}).join('')||'<div class=m>لا حركات</div>'}</div>`
+  <button class="b s" style="width:100%;margin-top:8px" onclick="debtV()">رجوع</button></div><div class=card id=stm></div>`;
+  stmtCard({partner:id,nat:c,title:'كشف حساب '+(c?'الزبون ':'المورد ')+p.name})
 }
 async function openBal(id){
   const a=prompt('الرصيد الافتتاحي (المبلغ المستحق سابقاً)');if(!a||isNaN(+a)||+a<=0)return;
@@ -256,11 +264,108 @@ async function openBal(id){
   const r=await call('post_opening_partner',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
   if(r!==undefined){toast('تم ✓');partnerV(id)}
 }
-function printStm(){
-  const p=S.stp,c=p.kind=='customer',last=S.stm.length?+S.stm[S.stm.length-1].balance:0;
-  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">كشف حساب: ${esc(p.name)}</div><hr>
-  <table>${S.stm.map(x=>`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${fmt(c?x.balance:-x.balance)}`).join('')}</table><hr>
-  <b>الرصيد: ${fmt(c?last:-last)}</b>`;
+
+/* ---- الحسابات وكشوفها ---- */
+const TYP={asset:'أصول',liability:'خصوم',equity:'حقوق ملكية',revenue:'إيرادات',expense:'مصاريف'};
+const NAT=a=>(a.type=='asset'||a.type=='expense')?+a.balance:-(+a.balance);
+const kidsOf=pid=>S.ac.filter(a=>(a.parent_id||null)==pid);
+const totOf=a=>a.is_group?kidsOf(a.id).reduce((t,k)=>t+totOf(k),0):NAT(a);
+async function acctV(){
+  const {data,error}=await db.from('trial_balance').select('*').order('code');
+  if(error)return toast(error.message);
+  S.ac=data||[];
+  const row=(a,d)=>`<div class=it style="padding-inline-start:${d*14}px" onclick="acctOpen('${a.id}')"><span>${a.is_group?'📁 ':''}<b>${esc(a.code)}</b> ${esc(a.name)}</span><span class="${totOf(a)<0?'neg':''}">${fmt(totOf(a))}</span></div>`+(a.is_group?kidsOf(a.id).map(k=>row(k,d+1)).join(''):'');
+  $('#v').innerHTML=`<div class=card><b>الصناديق</b>${S.ac.filter(a=>a.is_cashbox).map(a=>`<div class=it onclick="acctOpen('${a.id}')"><span>${esc(a.name)}</span><b>${fmt(NAT(a))}</b></div>`).join('')}
+  <div class=row style="margin-top:8px"><button class="b s" onclick="addAcctForm(true)">+ صندوق</button><button class="b s" onclick="voucherForm('transfer')">تحويل بين الصناديق</button></div></div>
+  <div class=card><b>شجرة الحسابات</b>${S.ac.filter(a=>!a.parent_id).map(a=>row(a,0)).join('')}
+  <div class=row style="margin-top:8px"><button class="b s" onclick="addAcctForm(false)">+ حساب</button><button class="b s" onclick="voucherForm('voucher')">سند / قيد</button></div>
+  <button class="b s" style="width:100%;margin-top:8px" onclick="importForm()">استيراد دليل حسابات</button></div><div id=af></div>`
+}
+function addAcctForm(cash){
+  const par=S.ac.filter(a=>a.is_group||!a.sys_code).map(a=>`<option value=${a.id}>${esc(a.code)} ${esc(a.name)}`).join('');
+  $('#af').innerHTML=`<div class=card><b>${cash?'صندوق جديد':'حساب جديد'}</b>
+  <input id=ac placeholder="رقم الحساب"><input id=an2 placeholder="اسم الحساب">
+  <select id=apar><option value="">بدون حساب أب (حساب رئيسي)${par}</select>
+  <select id=aty>${cash?'<option value=asset>أصول':'<option value=asset>أصول<option value=liability>خصوم<option value=equity>حقوق ملكية<option value=revenue>إيرادات<option value=expense>مصاريف'}</select>
+  <div class=m>إذا اخترت حساباً أباً، يرث نوعه.</div>
+  ${cash?'':'<label class=m><input type=checkbox id=agr style="width:auto"> حساب مجموعة (له حسابات فرعية)</label>'}
+  <button class=b style="width:100%;margin-top:6px" onclick="saveAcct(${cash})">حفظ</button></div>`;
+  $('#af').scrollIntoView()
+}
+async function saveAcct(cash){
+  const r=await call('add_account',{p_shop:S.shop.id,p_code:$('#ac').value,p_name:$('#an2').value,p_type:$('#aty').value,p_parent:$('#apar').value||null,p_group:!!($('#agr')&&$('#agr').checked),p_cashbox:!!cash});
+  if(r!==undefined){toast('تمت الإضافة ✓');acctV()}
+}
+function acctOpen(id){
+  const a=S.ac.find(x=>x.id==id);S.ca=a;
+  $('#v').innerHTML=`<div class=card><b>${esc(a.code)} · ${esc(a.name)}</b>
+  <div class=m>${TYP[a.type]}${a.sys_code?' · حساب يستخدمه البرنامج':''}${a.is_group?' · مجموعة':''}</div>
+  <h3>الرصيد: ${fmt(totOf(a))}</h3>
+  <div class=row><button class="b s" onclick="editAcctForm()">تعديل</button>${a.sys_code||a.is_group?'':`<button class="b s neg" onclick="delAcct()">حذف</button>`}<button class="b s" onclick="acctV()">رجوع</button></div><div id=af></div></div>
+  <div class=card id=stm></div>`;
+  stmtCard({account:id,nat:a.type=='asset'||a.type=='expense',title:'كشف حساب '+a.code+' '+a.name})
+}
+function editAcctForm(){
+  const a=S.ca,par=S.ac.filter(x=>x.id!=a.id&&x.type==a.type&&(x.is_group||!x.sys_code)).map(x=>`<option value=${x.id} ${x.id==a.parent_id?'selected':''}>${esc(x.code)} ${esc(x.name)}`).join('');
+  $('#af').innerHTML=`<input id=ec value="${esc(a.code)}" placeholder="رقم الحساب"><input id=en2 value="${esc(a.name)}" placeholder="الاسم">
+  <select id=ep2><option value="">بدون حساب أب${par}</select><button class=b style="width:100%" onclick="saveEditAcct()">حفظ التعديل</button>`
+}
+async function saveEditAcct(){
+  const a=S.ca,r=await call('update_account',{p_shop:S.shop.id,p_id:a.id,p_code:$('#ec').value,p_name:$('#en2').value,p_parent:$('#ep2').value||null});
+  if(r!==undefined){toast('تم الحفظ ✓');acctV()}
+}
+async function delAcct(){
+  const a=S.ca;if(!confirm('حذف الحساب '+a.name+'؟'))return;
+  const r=await call('delete_account',{p_shop:S.shop.id,p_id:a.id});
+  if(r!==undefined){toast('تم الحذف');acctV()}
+}
+function importForm(){
+  $('#af').innerHTML=`<div class=card><b>استيراد دليل حسابات</b>
+  <div class=m>كل سطر حساب: رقم;اسم;نوع;رقم الحساب الأب<br>النوع والأب اختياريان (الفرعي يرث نوع أبيه، والأب يجب أن يسبق ابنه).<br>الأنواع: أصول، خصوم، حقوق ملكية، إيرادات، مصاريف.<br>مثال:<br>5;الحسابات المالية;أصول<br>53;الصناديق;;5<br>531;الصندوق الرئيسي;;53</div>
+  <textarea id=imp rows=8 dir=rtl style="width:100%;border:1px solid var(--b);border-radius:8px;padding:8px;background:var(--bg);color:var(--t);font:inherit"></textarea>
+  <button class=b style="width:100%;margin-top:6px" onclick="doImport()">استيراد</button></div>`;
+  $('#af').scrollIntoView()
+}
+async function doImport(){
+  const rows=$('#imp').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const [code,name,type,parent]=l.split(/[;\t]/).map(x=>(x||'').trim());return {code,name,type,parent}});
+  if(!rows.length)return toast('الصق الدليل أولاً');
+  const r=await call('import_accounts',{p_shop:S.shop.id,p_rows:rows});
+  if(r!==undefined){toast('تم استيراد '+(r===1?'(1 أو أكثر)':r)+' حساب ✓');acctV()}
+}
+function voucherForm(kind){
+  const tr=kind=='transfer',L=(tr?S.ac.filter(a=>a.is_cashbox):S.ac.filter(a=>!a.is_group&&!['1100','2100','1200'].includes(a.sys_code)));
+  const o=L.map(a=>`<option value=${a.id}>${esc(a.code)} ${esc(a.name)}`).join('');
+  $('#af').innerHTML=`<div class=card><b>${tr?'تحويل بين الصناديق':'سند / قيد بين حسابين'}</b>
+  <div class=m>${tr?'يُحوَّل المبلغ من صندوق إلى آخر.':'مثال: دفع إيجار من الصندوق ← مدين: مصروف الإيجار، دائن: الصندوق.'}</div>
+  <div class=m>${tr?'إلى صندوق':'الحساب المدين (المستفيد / المصروف)'}</div><select id=vd>${o}</select>
+  <div class=m>${tr?'من صندوق':'الحساب الدائن (المصدر)'}</div><select id=vc>${o}</select>
+  <div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcur><option>SYP<option>USD</select></div>
+  <input id=vn placeholder="البيان (اختياري)"><button class=b style="width:100%" onclick="saveVoucher()">حفظ</button></div>`;
+  $('#af').scrollIntoView()
+}
+async function saveVoucher(){
+  const cur=$('#vcur').value;
+  const r=await call('post_voucher',{p_shop:S.shop.id,p_client:uid(),p_debit:$('#vd').value,p_credit:$('#vc').value,p_amount:+$('#va').value,p_currency:cur,p_rate:rate(cur),p_desc:$('#vn').value});
+  if(r!==undefined){toast('تم ✓');acctV()}
+}
+function stmtCard(o){
+  S.sc=o;
+  $('#stm').innerHTML=`<b>كشف الحساب</b><div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
+  <div class=row><button class=b onclick="stmtLoad()">عرض</button><button class="b s" onclick="stmtPrint()">طباعة</button></div><div id=sr></div>`;
+  stmtLoad()
+}
+async function stmtLoad(){
+  const o=S.sc,f=$('#sf').value,t=$('#st').value;
+  const {data,error}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:o.account||null,p_partner:o.partner||null,p_from:f,p_to:t});
+  if(error)return toast(error.message);
+  S.sd=data||[];
+  $('#sr').innerHTML=S.sd.map(x=>`<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):'')}<br><b>${fmt(o.nat?+x.balance:-x.balance)}</b></span></div>`).join('')||'<div class=m>لا حركات</div>'
+}
+function stmtPrint(){
+  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?+S.sd[S.sd.length-1].balance:0;
+  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">${esc(o.title)}</div><div style="text-align:center">${f} ← ${t}</div><hr>
+  <table>${S.sd.map(x=>`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(o.nat?+x.balance:-x.balance)}`).join('')}</table><hr>
+  <b>الرصيد: ${fmt(o.nat?last:-last)}</b>`;
   print()
 }
 
@@ -338,10 +443,10 @@ async function rmMember(u){
 async function histV(){
   $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
   const [s,p]=await Promise.all([
-    db.from('sales').select('id,sale_date,currency,total,paid,voided_at,created_at,partners(name),sale_items(qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
-    db.from('purchases').select('id,purchase_date,currency,total,paid,voided_at,created_at,partners(name),purchase_items(qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
-  S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({n:i.products?.name,q:i.qty,p:i.price}))})),
-    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
+    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),sale_items(product_id,qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
+    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),purchase_items(product_id,qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
+  S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price}))})),
+    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
     .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
   $('#v').innerHTML=`<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
 }
@@ -351,7 +456,14 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
   <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
-  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||S.role!='owner'?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+}
+function editInv(k){
+  const x=S.hist[k],rt=+x.rate;
+  S.mode=x.kind=='sale'?'sale':'buy';S.cur=x.currency;
+  S.cart=x.items.map(i=>({id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt}));
+  S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,partner:x.partner_id,cur:x.currency,rate:rt};
+  go(S.mode)
 }
 async function voidInv(k){
   const x=S.hist[k];
@@ -436,7 +548,7 @@ async function repV(){
     db.from('trial_balance').select('*').order('code'),
     db.from('daily_profit').select('*').order('entry_date',{ascending:false}).limit(7),
     db.from('low_stock').select('name,stock_qty')]);
-  const T=tb.data||[],g=c=>+(T.find(x=>x.code==c)||{balance:0}).balance;
+  const T=tb.data||[],g=c=>+(T.find(x=>x.sys_code==c)||{balance:0}).balance;
   const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
   const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
   $('#v').innerHTML=`<div class=card id=per></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
@@ -450,7 +562,7 @@ async function loadPeriod(n,from,to){
   if(!from)[from,to]=[ld(new Date(Date.now()-n*864e5)),today()];
   const {data,error}=await db.rpc('period_report',{p_shop:S.shop.id,p_from:from,p_to:to});
   if(error)return toast(error.message);
-  const g=c=>{const x=(data||[]).find(r=>r.code==c);return x?+x.credit-+x.debit:0};
+  const g=c=>{const x=(data||[]).find(r=>r.sys_code==c);return x?+x.credit-+x.debit:0};
   const sales=g('4100'),cogs=-g('5100'),exp=-g('5200'),gross=sales-cogs;
   $('#per').innerHTML=`<b>تقرير الفترة</b>
   <div class=row style="margin:6px 0"><button class="b s" onclick="loadPeriod(0)">اليوم</button><button class="b s" onclick="loadPeriod(6)">7 أيام</button><button class="b s" onclick="loadPeriod(29)">30 يوماً</button></div>
