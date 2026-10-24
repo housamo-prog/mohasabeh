@@ -62,7 +62,7 @@ async function call(fn,args,q){
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
   if(!error)return data||1;
   if(q&&bad(error)){const Q=JSON.parse(localStorage.q||'[]');Q.push({fn,args});localStorage.q=JSON.stringify(Q);return null}
-  toast(/stock_levels|check constraint/.test(error.message)?'الكمية غير كافية في هذا المستودع':error.message)
+  toast(/stock_levels|check constraint/.test(error.message)?'الكمية الإجمالية غير كافية في المخزون':error.message)
 }
 async function flush(){
   const Q=JSON.parse(localStorage.q||'[]');if(!Q.length||!navigator.onLine)return;
@@ -195,7 +195,7 @@ async function post(){
     const chk=()=>{for(const i of S.cart){const have=lvl(i.id,S.wh);if(i.qty>have){const h=whHint(i.id);return '"'+i.name+'": المطلوب '+fmt(i.qty)+' والمتوفر بهذا المستودع '+fmt(have)+(h?'. متوفر في: '+h+' (غيّر المستودع من القائمة)':'')}}return ''};
     let bad=chk();
     if(bad&&navigator.onLine){await refresh();bad=chk()}
-    if(bad)return toast(bad)
+    if(bad&&!confirm(bad+'\n\nسيصبح رصيد هذا المستودع بالسالب. هل تريد المتابعة؟'))return
   }
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:S.cart.map(i=>sale?{product_id:i.id,qty:i.qty,price:i.price}:{product_id:i.id,qty:i.qty,unit_cost:i.price}),p_paid:paid};
