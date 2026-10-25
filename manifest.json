@@ -1,6 +1,6 @@
 {
-  "name": "محاسبة المحل",
-  "short_name": "محاسبة",
+  "name": "الوسام للمحاسبة والمستودعات",
+  "short_name": "الوسام",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
