@@ -7,7 +7,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f7b4f">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
 :root{--bg:#f6f7f9;--c:#fff;--t:#1b1f24;--m:#6b7280;--p:#0f7b4f;--b:#e5e7eb;--r:#c0392b}
 @media(prefers-color-scheme:dark){:root{--bg:#14171a;--c:#1e2327;--t:#e8eaed;--m:#9aa3ad;--b:#2d343a}}
@@ -85,7 +85,7 @@ addEventListener('online',flush);
 /* ---- الدخول ---- */
 async function boot(){const {data:{session}}=await db.auth.getSession();session?load():authView()}
 function authView(){
-  $('#app').innerHTML=`<main><div class=card><h2>${BRAND}</h2>
+  $('#app').innerHTML=`<main><div class=card style="text-align:center"><img src="icon-192.png" width=96 height=96 alt="" style="border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.25)"><h2 style="margin:10px 0 14px">${BRAND}</h2>
   <input id=em type=email dir=ltr placeholder="الإيميل"><input id=pw type=password dir=ltr placeholder="كلمة السر (6 أحرف على الأقل)">
   <div class=row><button class=b onclick="auth(0)">دخول</button><button class="b s" onclick="auth(1)">حساب جديد</button></div></div>
   <div class=m style="text-align:center;margin-top:8px">للتواصل والدعم: <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a></div></main>`
@@ -137,11 +137,12 @@ async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await cal
 const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',acc:'الحسابات',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
-  $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
+  $('#app').innerHTML=`<header><div style="display:flex;gap:9px;align-items:center"><img src="icon-192.png" width=38 height=38 alt="" style="border-radius:10px"><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
   <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist'||k=='help')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
-  <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a></footer>`;
+  <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a><br><button class="b s ib" style="display:none;margin-top:8px" onclick="installApp()">📲 تثبيت التطبيق</button></footer>`;
+  if(IP)document.querySelectorAll('.ib').forEach(b=>b.style.display='');
   go(S.tab)
 }
 function go(k){
@@ -468,6 +469,27 @@ async function rcpSave(){
   if(r!==undefined){await refresh();toast('تم حفظ الوصفة ✓');mfgV()}
 }
 
+/* ---- تثبيت التطبيق ---- */
+let IP=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();IP=e;document.querySelectorAll('.ib').forEach(b=>b.style.display='')});
+addEventListener('appinstalled',()=>{IP=null;document.querySelectorAll('.ib').forEach(b=>b.style.display='none');toast('تم تثبيت التطبيق ✓')});
+async function installApp(){
+  if(!IP)return toast('لم يعرض المتصفح التثبيت بعد. جرّب قائمة المتصفح (⋮) ← تثبيت التطبيق، أو شغّل "فحص التثبيت" من تبويب الدليل');
+  IP.prompt();await IP.userChoice;IP=null;document.querySelectorAll('.ib').forEach(b=>b.style.display='none')
+}
+async function checkInstall(){
+  const o=[],row=(t,v,h)=>o.push(`<div class=it><span>${t}</span><b class="${v?'ok':'neg'}">${v?'✓':'✗'}</b></div>${v?'':'<div class=m style="margin-bottom:6px">'+h+'</div>'}`);
+  const get=async f=>{try{return (await fetch(f,{cache:'no-store'})).ok}catch(e){return false}};
+  row('الرابط يبدأ بـ https',location.protocol=='https:','افتح الموقع برابطه الكامل الذي يبدأ بـ https');
+  row('مفتوح من المتصفح مباشرة',!/FBAN|FBAV|Instagram|WhatsApp|Line\//i.test(navigator.userAgent),'لا تفتح الرابط من داخل واتساب أو فيسبوك. انسخه وافتحه في Chrome');
+  row('ملف manifest.json موجود',await get('manifest.json'),'ارفع manifest.json على GitHub بنفس مجلد index.html');
+  for(const f of ['icon-192.png','icon-512.png','icon-maskable-512.png'])row('الأيقونة '+f,await get(f),'ارفع هذا الملف على GitHub بنفس المجلد وباسمه الحرفي');
+  const reg=navigator.serviceWorker?await navigator.serviceWorker.getRegistration():null;
+  row('ملف sw.js يعمل',!!reg,'ارفع sw.js على GitHub، ثم حدّث الصفحة مرتين');
+  const st=matchMedia('(display-mode: standalone)').matches;
+  $('#chk').innerHTML=o.join('')+`<div class=m style="margin-top:8px">${st?'التطبيق مفتوح الآن كتطبيق مثبّت ✓':(IP?'جاهز للتثبيت: اضغط الزر أعلاه.':'إذا كانت كل البنود ✓ ولم يظهر خيار التثبيت: حدّث الصفحة مرتين، وإن كنت ثبّتّه سابقاً احذف الأيقونة القديمة ثم أعد المحاولة.')}</div>`
+}
+
 /* ---- دليل المستخدم ---- */
 const GUIDE=[
 {t:'🚀 البدء السريع (للمالك)',o:1,h:`<ol>
@@ -528,7 +550,8 @@ const GUIDE=[
 <li>إذا عندك أكثر من مستودع يمكنك <b>ربط كل كاشير بمستودع ثابت</b> من نفس الشاشة.</li></ul>`},
 {t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
 <li>إذا انقطع الإنترنت: يُحفظ البيع والشراء والسندات والمصاريف على الجهاز مؤقتاً وتُرسل تلقائياً عند عودته. بقية الشاشات تحتاج اتصالاً.</li>
-<li><b>للتثبيت كتطبيق:</b> من متصفح كروم اضغط النقاط الثلاث ثم <b>تثبيت التطبيق</b> (أو إضافة إلى الشاشة الرئيسية).</li>
+<li><b>للتثبيت كتطبيق:</b> افتح الموقع من Chrome، واضغط زر <b>📲 تثبيت التطبيق</b> أسفل الصفحة إن ظهر، أو النقاط الثلاث ثم <b>تثبيت التطبيق</b>. على الآيفون: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.</li>
+<li>إذا لم يظهر خيار التثبيت اضغط <b>فحص التثبيت</b> في آخر هذه الصفحة ليخبرك ما الناقص.</li>
 <li>مسح الباركود بالكاميرا يطلب إذن الكاميرا أول مرة، ويحتاج إنترنت مرة واحدة لتحميله.</li></ul>`},
 {t:'🛡️ نصائح مهمة (للمالك)',o:1,h:`<ul>
 <li>نزّل <b>نسخة احتياطية</b> كل أسبوع (التقارير).</li>
@@ -547,6 +570,7 @@ function helpV(){
   const own=S.role=='owner';
   $('#v').innerHTML=`<div class=card><b>دليل استخدام ${BRAND}</b><div class=m>اضغط على أي عنوان لفتحه.</div>
   ${GUIDE.filter(g=>own||!g.o).map(g=>`<details><summary>${g.t}</summary>${g.h}</details>`).join('')}</div>
+  <div class=card><b>تثبيت التطبيق على جهازك</b><div class=row style="margin-top:8px"><button class="b ib" style="display:none" onclick="installApp()">📲 تثبيت التطبيق</button><button class="b s" onclick="checkInstall()">فحص التثبيت</button></div><div id=chk style="margin-top:8px"></div></div>
   <div class=card><b>تحتاج مساعدة؟</b><div class=m>فريق الدعم يردّ عبر واتساب.</div>
   <a class=b style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="${waLink()}" target=_blank rel=noopener>راسلنا على واتساب <span dir=ltr>${WAV}</span></a></div>`
 }
