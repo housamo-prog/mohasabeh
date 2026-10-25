@@ -156,17 +156,32 @@ function inv(){
   $('#v').innerHTML=`<div class=card><div class=row><input id=q placeholder="ابحث بالاسم أو امسح الباركود" oninput="srch()" onkeydown="if(event.key=='Enter')pickBar()"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanInv()">📷</button></div><div id=res></div></div>
   <div class=card><div id=cart></div>
   ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:S.whs.length>1?`<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
-  <div class=row><select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
-  <select id=pt><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select></div>
-  <input id=paid type=number inputmode=decimal placeholder="المدفوع (فارغ = الكل نقداً)">
+  <select id=cur onchange="setCur(this.value)"><option>SYP<option>USD</select>
+  <div class=row><select id=pt onchange="pmCh()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد">＋</button></div>
+  <select id=pm onchange="pmCh()"><option value=cash>الدفع: نقداً بالكامل<option value=credit>آجل (بدون دفعة)<option value=part>دفعة جزئية والباقي آجل</select>
+  <input id=paid type=number inputmode=decimal placeholder="المبلغ المدفوع الآن" style="display:none">
   ${sale&&!S.edit?`<label class=m style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type=checkbox id=ap style="width:auto;margin:0" ${localStorage.ap=='1'?'checked':''} onchange="localStorage.ap=this.checked?'1':'0'"> طباعة الوصل بعد البيع</label>`:''}
   <button class=b style="width:100%" onclick="post()">${sale?'تسجيل البيع':'تسجيل الشراء'}</button></div>`;
   $('#cur').value=S.cur;cartV();srch();
   if(S.edit){
-    $('#pt').value=S.edit.partner||'';$('#paid').value=S.edit.paid;
+    $('#pt').value=S.edit.partner||'';const e0=S.edit;$('#pm').value=+e0.paid>=+e0.total-0.005?'cash':(+e0.paid<=0?'credit':'part');if($('#pm').value=='part')$('#paid').value=e0.paid;pmCh();
     $('#v').insertAdjacentHTML('afterbegin',`<div class=card style="border-color:var(--p)"><b>تعديل فاتورة</b><div class=m>تُلغى الفاتورة القديمة وتُسجَّل هذه بدلاً منها بنفس التاريخ. عدّل البنود ثم اضغط التسجيل.</div><button class="b s" style="margin-top:6px" onclick="S.edit=null;S.cart=[];go('hist')">إلغاء التعديل</button></div>`)
   }
-  if(S.mode=='open'){$('#pt').style.display='none';$('#paid').style.display='none';document.querySelector('button[onclick="post()"]').textContent='تسجيل المخزون الافتتاحي'}
+  if(S.mode=='open'){['#pt','#paid','#pm','#np'].forEach(q=>$(q).style.display='none');document.querySelector('button[onclick="post()"]').textContent='تسجيل المخزون الافتتاحي'}
+}
+function pmCh(){
+  const pm=$('#pm').value;
+  $('#paid').style.display=pm=='part'?'':'none';
+  $('#pt').style.borderColor=(pm!='cash'&&!$('#pt').value)?'var(--r)':''
+}
+async function newPartner(){
+  const sale=S.mode=='sale',n=prompt(sale?'اسم الزبون الجديد':'اسم المورد الجديد');if(!n||!n.trim())return;
+  const ph=prompt('رقم الهاتف (اختياري)')||'';
+  const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier'}).select('id').single();
+  if(error)return toast(error.message);
+  const pmv=$('#pm').value,pv=$('#paid').value;
+  await refresh();inv();
+  $('#pt').value=data.id;$('#pm').value=pmv;$('#paid').value=pv;pmCh()
 }
 function srch(){
   const q=($('#q').value||'').trim().toLowerCase();
@@ -192,7 +207,10 @@ function cartV(){
 async function post(){
   if(!S.cart.length)return toast('الفاتورة فارغة');
   if(S.mode=='open')return postOpen();
-  const sale=S.mode=='sale',t=tot(),pv=$('#paid').value,paid=pv===''?t:+pv;
+  const sale=S.mode=='sale',t=tot(),pm=$('#pm').value;
+  let paid=pm=='cash'?t:pm=='credit'?0:+$('#paid').value;
+  if(pm=='part'&&!(paid>0&&paid<t))return toast('أدخل مبلغاً أكبر من صفر وأقل من إجمالي الفاتورة ('+fmt(t)+')');
+  if(pm!='cash'&&!$('#pt').value){$('#pt').style.borderColor='var(--r)';return toast(sale?'البيع الآجل يحتاج اختيار الزبون، أو أضفه بزر ＋':'الشراء الآجل يحتاج اختيار المورد، أو أضفه بزر ＋')}
   if(sale&&!S.edit){
     const chk=()=>{for(const i of S.cart){const have=lvl(i.id,S.wh);if(i.qty>have){const h=whHint(i.id);return '"'+i.name+'": المطلوب '+fmt(i.qty)+' والمتوفر بهذا المستودع '+fmt(have)+(h?'. متوفر في: '+h+' (غيّر المستودع من القائمة)':'')}}return ''};
     let bad=chk();
@@ -499,7 +517,7 @@ function editInv(k){
   const x=S.hist[k],rt=+x.rate;
   S.mode=x.kind=='sale'?'sale':'buy';S.cur=x.currency;
   S.cart=x.items.map(i=>({id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt}));
-  S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,partner:x.partner_id,cur:x.currency,rate:rt};
+  S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
 async function voidInv(k){
