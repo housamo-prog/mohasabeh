@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>محاسبة المحل</title>
+<title>الوسام للمحاسبة والمستودعات</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f7b4f">
 <link rel="icon" href="icon-192.png">
@@ -20,13 +20,16 @@ nav button.on{color:var(--p);border-color:var(--p);font-weight:700}
 main{padding:12px;max-width:720px;margin:auto}
 .card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:12px}
 input,select{width:100%;padding:10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t);font:inherit;margin:4px 0}
-button.b{padding:10px 14px;border:0;border-radius:8px;background:var(--p);color:#fff;font:inherit;font-weight:700}
+button.b,a.b{padding:10px 14px;border:0;border-radius:8px;background:var(--p);color:#fff;font:inherit;font-weight:700}
 button.b.s{background:var(--b);color:var(--t)}
 .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
 .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)}
 .m{color:var(--m);font-size:13px}.neg{color:var(--r)}
 table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--b);text-align:start;font-size:13px}
 .strike{text-decoration:line-through}.ok{color:var(--p)}
+a{color:var(--p)}a.b{color:#fff}
+details{border-bottom:1px solid var(--b);padding:9px 0}summary{font-weight:700;cursor:pointer}
+details ol,details ul{margin:8px 0;padding-inline-start:22px;line-height:1.9}
 #scan{position:fixed;inset:0;background:#000;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px}
 #reader{width:100%;max-width:480px}#scan .m{color:#fff;text-align:center}
 #rcpt{display:none}
@@ -43,6 +46,8 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px so
 <script>
 const URL_='https://xeeqyedzueuzdlfsqjyh.supabase.co',KEY='sb_publishable_mELxzgngQxrZ3JZuyNJqGg_Aw7jGUEg';
 const db=supabase.createClient(URL_,KEY);
+const BRAND='الوسام للمحاسبة والمستودعات',WA='963933267910',WAV='+963 933 267 910';
+const waLink=()=>'https://wa.me/'+WA+'?text='+encodeURIComponent('مرحباً، أحتاج مساعدة بخصوص '+BRAND);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
@@ -80,9 +85,10 @@ addEventListener('online',flush);
 /* ---- الدخول ---- */
 async function boot(){const {data:{session}}=await db.auth.getSession();session?load():authView()}
 function authView(){
-  $('#app').innerHTML=`<main><div class=card><h2>محاسبة المحل</h2>
+  $('#app').innerHTML=`<main><div class=card><h2>${BRAND}</h2>
   <input id=em type=email dir=ltr placeholder="الإيميل"><input id=pw type=password dir=ltr placeholder="كلمة السر (6 أحرف على الأقل)">
-  <div class=row><button class=b onclick="auth(0)">دخول</button><button class="b s" onclick="auth(1)">حساب جديد</button></div></div></main>`
+  <div class=row><button class=b onclick="auth(0)">دخول</button><button class="b s" onclick="auth(1)">حساب جديد</button></div></div>
+  <div class=m style="text-align:center;margin-top:8px">للتواصل والدعم: <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a></div></main>`
 }
 async function auth(up){
   const e=$('#em').value.trim(),p=$('#pw').value;
@@ -128,13 +134,14 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',acc:'الحسابات',open:'افتتاحي'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',acc:'الحسابات',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
-  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>`;
+  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist'||k=='help')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
+  <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a></footer>`;
   go(S.tab)
 }
 function go(k){
@@ -142,7 +149,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -459,6 +466,89 @@ function rcpAdd(){
 async function rcpSave(){
   const r=await call('set_bom',{p_shop:S.shop.id,p_product:$('#rp').value,p_items:S.rc.map(x=>({component_id:x.id,qty:x.qty}))});
   if(r!==undefined){await refresh();toast('تم حفظ الوصفة ✓');mfgV()}
+}
+
+/* ---- دليل المستخدم ---- */
+const GUIDE=[
+{t:'🚀 البدء السريع (للمالك)',o:1,h:`<ol>
+<li>اضغط <b>حساب جديد</b> وسجّل بإيميلك وكلمة سر، ثم أنشئ محلك. لديك تجربة مجانية 14 يوماً.</li>
+<li>اضغط زر <b>$</b> أعلى الصفحة وأدخل سعر الدولار بالليرة. حدّثه كلما تغيّر السعر.</li>
+<li>من تبويب <b>المنتجات</b> أضف منتجاتك.</li>
+<li>سجّل بضاعتك: إما بفاتورة <b>شراء</b>، أو بـ<b>مخزون افتتاحي</b> (تبويب المخزون) إذا كانت البضاعة موجودة قبل استخدام البرنامج.</li>
+<li>أضف الزبائن والموردين من تبويب <b>الديون</b> (أو بزر ＋ داخل الفاتورة)، وسجّل أرصدتهم القديمة إن وجدت.</li>
+<li>ابدأ <b>البيع</b>.</li></ol>`},
+{t:'🔑 تسجيل الدخول والكاشير',o:0,h:`<ul>
+<li>ادخل بالإيميل وكلمة السر. لا تشارك كلمة السر مع أحد.</li>
+<li><b>للكاشير:</b> اضغط "حساب جديد" بإيميلك، ثم اطلب من المالك إضافتك (تبويب الفريق)، ثم اضغط "تحديث".</li></ul>`},
+{t:'📦 المنتجات',o:0,h:`<ul>
+<li><b>المالك</b> يضيف المنتج: الاسم، الباركود (اكتبه أو اضغط 📷 لمسحه)، سعر البيع والعملة، وحد التنبيه للمخزون.</li>
+<li>اضغط على المنتج لتعديله أو حذفه. الحذف يخفيه من القوائم، والفواتير القديمة تبقى محفوظة.</li>
+<li>الكمية لا تُكتب يدوياً: تتغيّر تلقائياً بالشراء والبيع والجرد.</li>
+<li><b>الكاشير</b> يرى المنتجات وأسعارها وكمياتها فقط.</li></ul>`},
+{t:'🛒 البيع',o:0,h:`<ol>
+<li>ابحث بالاسم أو الباركود، أو اضغط 📷 لمسح المنتجات تباعاً (اضغط إغلاق عند الانتهاء).</li>
+<li>اضغط على المنتج ليُضاف للفاتورة، وعدّل الكمية أو السعر من الفاتورة نفسها.</li>
+<li>اختر العملة: ليرة أو دولار.</li>
+<li>اختر الزبون (اختياري للبيع النقدي). لإضافة زبون جديد اضغط ＋.</li>
+<li>اختر <b>الدفع</b>: نقداً بالكامل، أو <b>آجل (بدون دفعة)</b>، أو دفعة جزئية والباقي آجل. البيع الآجل يحتاج اختيار الزبون.</li>
+<li>اضغط <b>تسجيل البيع</b>. فعّل "طباعة الوصل بعد البيع" إذا تريد الطباعة تلقائياً.</li></ol>`},
+{t:'📥 الشراء',o:1,h:`<ul>
+<li>نفس خطوات البيع، لكن تُدخل <b>سعر التكلفة</b> لكل وحدة، وتختار <b>المورد</b> إذا كان الشراء آجلاً.</li>
+<li>سعر التكلفة هو الذي يحدد ربحك، فتأكد منه. التكلفة تُحسب بمتوسط مرجح عند تكرار الشراء.</li></ul>`},
+{t:'💳 الديون وكشف الحساب',o:1,h:`<ul>
+<li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا).</li>
+<li>اضغط على الاسم: ترى كشف الحساب (بفترة من/إلى وطباعة)، وتسجّل <b>سند قبض</b> من الزبون أو <b>سند دفع</b> للمورد، أو <b>رصيد افتتاحي</b> لدين قديم.</li></ul>`},
+{t:'🧾 الفواتير',o:0,h:`<ul>
+<li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها ولطباعتها مجدداً.</li>
+<li><b>المالك فقط:</b> زر <b>تعديل</b> يفتح الفاتورة للتعديل (تُلغى القديمة وتُسجَّل الجديدة تلقائياً)، وزر <b>إلغاء</b> يعكس الفاتورة ويعيد المخزون.</li>
+<li>الفاتورة الملغاة تبقى ظاهرة مشطوبة حفاظاً على السجل. تعديل أو إلغاء فاتورة شراء يُرفض إذا بِعتَ جزءاً من بضاعتها.</li></ul>`},
+{t:'🏬 المخزون والمستودعات',o:1,h:`<ul>
+<li>من تبويب <b>المخزون</b>: اختر المستودع الحالي، أضف مستودعاً جديداً، أو حوّل بضاعة بين مستودعين.</li>
+<li><b>الجرد:</b> اضغط على المنتج وأدخل الكمية الفعلية الموجودة، فيسوّي البرنامج الفرق ويسجّله كخسارة أو ربح جرد.</li>
+<li><b>مخزون افتتاحي:</b> لتسجيل بضاعة موجودة مسبقاً بدون التأثير على الصندوق. استخدمه مرة واحدة لكل منتج.</li>
+<li>الفواتير تُسجَّل على المستودع المختار. إذا بِعتَ من مستودع رصيده أقل يظهر رصيده بالسالب تنبيهاً: صحّحه بالتحويل أو اختر المستودع الصحيح.</li></ul>`},
+{t:'📊 التقارير',o:1,h:`<ul>
+<li>الملخص: الصندوق، ذمم الزبائن، قيمة المخزون، ذمم الموردين، المبيعات، وصافي الربح.</li>
+<li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ.</li>
+<li>أزرار <b>+ مصروف</b> و<b>+ رأس مال</b> و<b>سحب المالك</b> لتسجيل الحركات غير التجارية.</li>
+<li><b>آخر السندات:</b> يمكنك إلغاء أي سند أخطأت فيه (يُسجَّل قيد عكسي).</li>
+<li><b>تنزيل نسخة احتياطية:</b> يحفظ كل بياناتك بملف. افعلها كل أسبوع.</li></ul>`},
+{t:'🏭 التصنيع',o:1,h:`<ol>
+<li>عرّف المواد الخام والمنتج الجاهز في تبويب المنتجات، وسجّل مخزون المواد الخام.</li>
+<li>من تبويب <b>التصنيع</b> اكتب <b>الوصفة</b>: المواد اللازمة لوحدة واحدة من المنتج الجاهز.</li>
+<li>لتنفيذ التصنيع: اختر المنتج والكمية، وأضف مصاريف إضافية (أجور، كهرباء) إن وجدت، ثم <b>تنفيذ</b>. تُخصم المواد ويُضاف المنتج بتكلفته الحقيقية.</li>
+<li>يمكن إلغاء أمر التصنيع إذا لم يُبَع أو يُستهلك جزء من المنتج الجاهز.</li></ol>`},
+{t:'📒 الحسابات (للمحاسبين)',o:1,h:`<ul>
+<li>تبويب <b>الحسابات</b> يعرض شجرة الحسابات. اضغط على أي حساب (أو صندوق) لترى كشف حسابه بفترة من/إلى مع الطباعة.</li>
+<li>يمكنك إضافة حساب تحت مجموعة، وإنشاء صناديق إضافية والتحويل بينها، وتسجيل سند أو قيد بين حسابين، واستيراد دليل حسابات جاهز.</li>
+<li>لا تعدّل الشجرة إلا إذا كنت تعرف المحاسبة. حسابات البرنامج الأساسية (الصندوق، الزبائن، المخزون، المبيعات...) تستطيع تغيير اسمها ورقمها بأمان.</li></ul>`},
+{t:'👥 الفريق والكاشير',o:1,h:`<ul>
+<li>الكاشير ينشئ حساباً بإيميله من شاشة الدخول، ثم تضيف إيميله من تبويب <b>الفريق</b>.</li>
+<li>الكاشير يبيع ويرى مبيعاته وينسخ الوصل، ولا يرى الأرباح ولا التكاليف ولا يلغي ولا يعدّل.</li>
+<li>إذا عندك أكثر من مستودع يمكنك <b>ربط كل كاشير بمستودع ثابت</b> من نفس الشاشة.</li></ul>`},
+{t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
+<li>إذا انقطع الإنترنت: يُحفظ البيع والشراء والسندات والمصاريف على الجهاز مؤقتاً وتُرسل تلقائياً عند عودته. بقية الشاشات تحتاج اتصالاً.</li>
+<li><b>للتثبيت كتطبيق:</b> من متصفح كروم اضغط النقاط الثلاث ثم <b>تثبيت التطبيق</b> (أو إضافة إلى الشاشة الرئيسية).</li>
+<li>مسح الباركود بالكاميرا يطلب إذن الكاميرا أول مرة، ويحتاج إنترنت مرة واحدة لتحميله.</li></ul>`},
+{t:'🛡️ نصائح مهمة (للمالك)',o:1,h:`<ul>
+<li>نزّل <b>نسخة احتياطية</b> كل أسبوع (التقارير).</li>
+<li>أنشئ للكاشير حساباً خاصاً ولا تعطه حسابك.</li>
+<li>راجع صندوقك وجرد بضاعتك دورياً وقارنهما بالواقع.</li>
+<li>بعد انتهاء الاشتراك تبقى بياناتك ظاهرة، لكن لا يمكن تسجيل عمليات جديدة حتى التجديد. تواصل معنا للتجديد.</li></ul>`},
+{t:'❓ مشاكل شائعة وحلولها',o:0,h:`<ul>
+<li><b>"الكمية غير كافية":</b> الكمية الإجمالية للمنتج ناقصة. سجّل شراءً أو اعمل جرداً (للمالك).</li>
+<li><b>البيع الآجل يرفض:</b> اختر الزبون أو أضفه بزر ＋.</li>
+<li><b>"انتهى الاشتراك":</b> تواصل معنا عبر واتساب للتجديد.</li>
+<li><b>لا يظهر المنتج بالبحث:</b> تأكد أنه غير محذوف وأن الاسم أو الباركود صحيح.</li>
+<li><b>الكاميرا لا تفتح:</b> اسمح للموقع باستخدام الكاميرا من إعدادات المتصفح، وجرّب إضاءة أفضل وتقريب الباركود.</li>
+<li><b>ظهرت رسالة خطأ غريبة:</b> صوّرها وأرسلها لنا عبر واتساب.</li></ul>`}
+];
+function helpV(){
+  const own=S.role=='owner';
+  $('#v').innerHTML=`<div class=card><b>دليل استخدام ${BRAND}</b><div class=m>اضغط على أي عنوان لفتحه.</div>
+  ${GUIDE.filter(g=>own||!g.o).map(g=>`<details><summary>${g.t}</summary>${g.h}</details>`).join('')}</div>
+  <div class=card><b>تحتاج مساعدة؟</b><div class=m>فريق الدعم يردّ عبر واتساب.</div>
+  <a class=b style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="${waLink()}" target=_blank rel=noopener>راسلنا على واتساب <span dir=ltr>${WAV}</span></a></div>`
 }
 
 /* ---- الفريق ---- */
