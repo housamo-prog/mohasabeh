@@ -27,6 +27,10 @@ button.b.s{background:var(--b);color:var(--t)}
 .m{color:var(--m);font-size:13px}.neg{color:var(--r)}
 table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--b);text-align:start;font-size:13px}
 .strike{text-decoration:line-through}.ok{color:var(--p)}
+#cs{background:#fff3cd;color:#664d03;padding:8px 14px;font-size:13px;line-height:1.7}
+@media(prefers-color-scheme:dark){#cs{background:#4a3b0a;color:#ffe69c}}
+#done{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:30;display:flex;align-items:center;justify-content:center;padding:18px}
+#done .dn{background:var(--c);color:var(--t);border-radius:16px;padding:20px;max-width:420px;width:100%;text-align:center}
 a{color:var(--p)}a.b{color:#fff}
 details{border-bottom:1px solid var(--b);padding:9px 0}summary{font-weight:700;cursor:pointer}
 details ol,details ul{margin:8px 0;padding-inline-start:22px;line-height:1.9}
@@ -45,7 +49,7 @@ details ol,details ul{margin:8px 0;padding-inline-start:22px;line-height:1.9}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 const URL_='https://xeeqyedzueuzdlfsqjyh.supabase.co',KEY='sb_publishable_mELxzgngQxrZ3JZuyNJqGg_Aw7jGUEg';
-const db=supabase.createClient(URL_,KEY);
+const db=supabase.createClient(URL_,KEY,{global:{fetch:(u,o={})=>{if(o.signal)return fetch(u,o);const c=new AbortController(),t=setTimeout(()=>c.abort(),12000);return fetch(u,{...o,signal:c.signal}).finally(()=>clearTimeout(t))}}});
 const BRAND='الوسام للمحاسبة والمستودعات',WA='963933267910',WAV='+963 933 267 910';
 const waLink=()=>'https://wa.me/'+WA+'?text='+encodeURIComponent('مرحباً، أحتاج مساعدة بخصوص '+BRAND);
 const $=s=>document.querySelector(s);
@@ -59,31 +63,62 @@ const rate=c=>c==='USD'?+S.shop.usd_rate:1;
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 
 /* ---- الاتصال بالدوال + طابور الإرسال عند انقطاع الإنترنت ---- */
-const bad=e=>!navigator.onLine||/fetch|network/i.test((e&&e.message)||'');
+const bad=e=>!navigator.onLine||/fetch|network|abort|load failed|timeout/i.test((e&&e.message)||'');
 const ld=d=>new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const today=()=>ld(new Date());
+const LBL={post_sale_wh:'فاتورة بيع',post_purchase_wh:'فاتورة شراء',record_payment:'سند قبض/دفع',record_expense:'مصروف',record_equity:'رأس مال/سحب',post_opening_stock_wh:'مخزون افتتاحي',post_opening_partner:'رصيد افتتاحي'};
+const qGet=()=>JSON.parse(localStorage.q||'[]'),qSet=a=>{localStorage.q=JSON.stringify(a);pqUpdate()};
+const fdt=t=>new Date(t).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
+function qMeta(fn,a){
+  const amt=a.p_items?a.p_items.reduce((s,i)=>s+(+i.qty)*(+(i.price??i.unit_cost)||0),0):(+a.p_amount||0);
+  return {ts:Date.now(),label:LBL[fn]||fn,amount:Math.round(amt*100)/100,cur:a.p_currency||'SYP',who:a.p_partner?((S.parts.find(p=>p.id==a.p_partner)||{}).name||''):''}
+}
+function optStock(fn,a){
+  if(fn!='post_sale_wh'&&fn!='post_purchase_wh')return;
+  const sg=fn=='post_sale_wh'?-1:1;
+  (a.p_items||[]).forEach(i=>{
+    const k=i.product_id+'|'+(a.p_wh||S.wh);S.lv[k]=(S.lv[k]||0)+sg*(+i.qty);
+    const p=S.prods.find(x=>x.id==i.product_id);if(p)p.stock_qty=+p.stock_qty+sg*(+i.qty)
+  });
+  saveCache()
+}
 async function call(fn,args,q){
   if(/^(post_|record_)/.test(fn)&&!args.p_date)args.p_date=today();
+  const enqueue=()=>{const Q=qGet();Q.push({fn,args,meta:qMeta(fn,args)});qSet(Q);optStock(fn,args);return null};
+  if(q&&!navigator.onLine)return enqueue();
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
   if(!error)return data||1;
-  if(q&&bad(error)){const Q=JSON.parse(localStorage.q||'[]');Q.push({fn,args});localStorage.q=JSON.stringify(Q);return null}
+  if(q&&bad(error))return enqueue();
   toast(/stock_levels|check constraint/.test(error.message)?'الكمية الإجمالية غير كافية في المخزون':error.message)
 }
+let FL=false;
 async function flush(){
-  const Q=JSON.parse(localStorage.q||'[]');if(!Q.length||!navigator.onLine)return;
-  const keep=[];
-  for(const x of Q){
-    const {error}=await db.rpc(x.fn,x.args);
-    if(error&&bad(error))keep.push(x);
-    else if(error){localStorage.f=JSON.stringify([...JSON.parse(localStorage.f||'[]'),x]);toast('عملية مؤجلة رُفضت: '+error.message)}
-  }
-  localStorage.q=JSON.stringify(keep);
-  if(S.shop)await refresh();
+  if(FL||!navigator.onLine)return;
+  const Q=qGet();if(!Q.length)return;
+  FL=true;let ok=0;const keep=[];
+  try{
+    for(const x of Q){
+      const {error}=await db.rpc(x.fn,x.args).then(r=>r,e=>({error:e}));
+      if(!error)ok++;
+      else if(bad(error))keep.push(x);
+      else{const f=JSON.parse(localStorage.f||'[]');f.push({...x,err:error.message});localStorage.f=JSON.stringify(f);toast('رفض الخادم عملية مؤجلة: '+error.message)}
+    }
+  }finally{FL=false}
+  qSet(keep);
+  if(ok){toast('تم ترحيل '+ok+' عملية إلى النظام ✓');if(S.shop){await refresh();if(S.tab=='hist')histV()}}
 }
-addEventListener('online',flush);
+addEventListener('online',()=>{pqUpdate();flush();if(S.cached){S.cached=false;load()}});
+addEventListener('offline',pqUpdate);
+setInterval(()=>{if(navigator.onLine&&qGet().length)flush()},30000);
 
 /* ---- الدخول ---- */
-async function boot(){const {data:{session}}=await db.auth.getSession();session?load():authView()}
+async function boot(){
+  let session=null;
+  try{const r=await db.auth.getSession();session=r.data.session}catch(e){}
+  if(session)return load();
+  if(!navigator.onLine&&useCacheOk())return;
+  authView()
+}
 function authView(){
   $('#app').innerHTML=`<main><div class=card style="text-align:center"><img src="icon-192.png" width=96 height=96 alt="" style="border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.25)"><h2 style="margin:10px 0 14px">${BRAND}</h2>
   <input id=em type=email dir=ltr placeholder="الإيميل"><input id=pw type=password dir=ltr placeholder="كلمة السر (6 أحرف على الأقل)">
@@ -98,19 +133,23 @@ async function auth(up){
   load()
 }
 async function load(){
-  const {data}=await db.from('shops').select('*').limit(1);
+  const {data,error:le}=await db.from('shops').select('*').limit(1).then(r=>r,e=>({data:null,error:e}));
+  if(le&&bad(le)&&useCacheOk())return;
   if(!data||!data.length)return newShopView();
   S.shop=data[0];
-  const {data:{user}}=await db.auth.getUser();
+  const {data:{session:ss}}=await db.auth.getSession(),user=ss.user;
   const m=await db.from('shop_members').select('role,warehouse_id').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
   S.role=(m.data||{}).role||'cashier';S.fixedWh=(m.data||{}).warehouse_id||null;
-  await refresh();flush();shell()
+  S.cached=false;
+  await refresh();flush();shell();
+  if(S.role=='owner')autoBackup()
 }
 async function refresh(){
   const [a,b,c]=await Promise.all([
     db.from('products').select('id,shop_id,name,barcode,unit,sale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name'),
     db.from('partners').select('*').order('name'),
     db.from('shops').select('*').eq('id',S.shop.id).single()]);
+  if(a.error||b.error)return;
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
   const cm={};
   if(S.role=='owner'){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
@@ -120,10 +159,12 @@ async function refresh(){
   const [w,l]=await Promise.all([
     db.from('warehouses').select('id,name,is_default').order('created_at'),
     db.from('stock_levels').select('product_id,warehouse_id,qty')]);
+  if(w.error||l.error)return;
   S.whs=w.data||[];S.lv={};
   (l.data||[]).forEach(x=>S.lv[x.product_id+'|'+x.warehouse_id]=+x.qty);
   if(!S.whs.find(x=>x.id==S.wh)){const sv=localStorage.wh;S.wh=(S.whs.find(x=>x.id==sv)||S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null}
-  if(S.fixedWh&&S.whs.find(x=>x.id==S.fixedWh))S.wh=S.fixedWh
+  if(S.fixedWh&&S.whs.find(x=>x.id==S.fixedWh))S.wh=S.fixedWh;
+  saveCache()
 }
 function newShopView(){
   $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
@@ -139,11 +180,11 @@ function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div style="display:flex;gap:9px;align-items:center"><img src="icon-192.png" width=38 height=38 alt="" style="border-radius:10px"><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
-  <button class="b s" onclick="db.auth.signOut().then(()=>location.reload())">خروج</button></header>
+  <button class="b s" onclick="logout()">خروج</button></header><div id=cs style="display:none"></div>
   <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist'||k=='help')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
   <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a><br><button class="b s ib" style="display:none;margin-top:8px" onclick="installApp()">📲 تثبيت التطبيق</button></footer>`;
   if(IP)document.querySelectorAll('.ib').forEach(b=>b.style.display='');
-  go(S.tab)
+  go(S.tab);pqUpdate()
 }
 function go(k){
   S.tab=k;
@@ -236,11 +277,17 @@ async function post(){
   args.p_wh=S.wh;
   const r=await call(sale?'post_sale_wh':'post_purchase_wh',args,true);
   if(r===undefined)return;
-  const snap=sale&&r&&$('#ap')&&$('#ap').checked?{kind:'sale',date:today(),currency:S.cur,total:t,paid,items:S.cart.map(i=>({n:i.name,q:i.qty,p:i.price})),partners:{name:$('#pt').value?$('#pt').selectedOptions[0].text:''}}:null;
-  S.cart=[];await refresh();
-  toast(r?'تم التسجيل ✓':'لا يوجد إنترنت: حُفظت العملية وسترسل تلقائياً');
+  const snapObj=sale?{kind:'sale',date:today(),currency:S.cur,total:t,paid,items:S.cart.map(i=>({n:i.name,q:i.qty,p:i.price})),partners:{name:$('#pt').value?$('#pt').selectedOptions[0].text:''}}:null;
+  const auto=sale&&r&&$('#ap')&&$('#ap').checked;
+  S.cart=[];
+  if(r)await refresh();
   inv();
-  if(snap)printObj(snap)
+  if(r===null){
+    showDone({t:sale?'تم حفظ فاتورة البيع':'تم حفظ فاتورة الشراء',b:'لا يوجد اتصال بالإنترنت الآن.<br>الفاتورة محفوظة على جهازك وستُرحَّل تلقائياً إلى النظام فور عودة الاتصال.<br><b>عمليات بانتظار الإرسال: '+qGet().length+'</b><br><span class=m style="color:inherit">لا تسجّل الخروج قبل ترحيلها.</span>'},snapObj)
+  }else{
+    toast('تم التسجيل ✓');
+    if(auto)printObj(snapObj)
+  }
 }
 
 /* ---- المخزون والجرد ---- */
@@ -469,6 +516,49 @@ async function rcpSave(){
   if(r!==undefined){await refresh();toast('تم حفظ الوصفة ✓');mfgV()}
 }
 
+/* ---- حالة الاتصال والعمل بدون إنترنت ---- */
+function saveCache(){
+  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,wh:S.wh,t:Date.now()})}catch(e){}
+}
+function useCacheOk(){
+  let c=null;try{c=JSON.parse(localStorage.cache||'null')}catch(e){}
+  if(!c||!c.shop)return false;
+  S.shop=c.shop;S.role=c.role;S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
+  shell();toast('تعمل الآن بدون اتصال على آخر بيانات محفوظة');return true
+}
+function pqUpdate(){
+  const el=$('#cs');if(!el)return;
+  const n=qGet().length,off=!navigator.onLine;
+  el.style.display=(off||n)?'':'none';
+  el.innerHTML=(off?'🔴 لا يوجد اتصال بالإنترنت. تستطيع متابعة البيع والشراء، وتُرسل العمليات تلقائياً عند عودته. ':'')+(n?`⏳ ${n} عملية بانتظار الإرسال <a href="#" onclick="go('hist');return false">عرضها</a>`:'')
+}
+function showDone(m,snap){
+  const d=document.createElement('div');d.id='done';
+  d.innerHTML=`<div class=dn><div style="font-size:46px">✅</div><h3 style="margin:6px 0">${m.t}</h3><div style="line-height:1.9">${m.b}</div>
+  <div class=row style="margin-top:14px">${snap?'<button class="b s" id=dp>🖨 طباعة الوصل</button>':''}<button class=b id=dc>متابعة</button></div></div>`;
+  document.body.appendChild(d);
+  $('#dc').onclick=()=>d.remove();
+  if(snap)$('#dp').onclick=()=>printObj(snap)
+}
+function pendHtml(){
+  const Q=qGet(),F=JSON.parse(localStorage.f||'[]');
+  if(!Q.length&&!F.length)return '';
+  const tm=t=>new Date(t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  const row=x=>`<div class=it><span>${esc(x.meta?x.meta.label:x.fn)}${x.meta&&x.meta.who?' · '+esc(x.meta.who):''}<br><span class="m ${x.err?'neg':''}">${x.err?esc(x.err):(x.meta?tm(x.meta.ts):'')}</span></span><b>${x.meta?fmt(x.meta.amount)+' '+x.meta.cur:''}</b></div>`;
+  return `<div class=card style="border-color:#e0a800">${Q.length?`<b>⏳ بانتظار الإرسال (${Q.length})</b><div class=m>محفوظة على جهازك وتُرسل تلقائياً عند عودة الإنترنت.</div>${Q.map(row).join('')}`:''}
+  ${F.length?`<b class=neg>⚠️ رفضها الخادم (${F.length})</b>${F.map(row).join('')}<button class="b s" style="margin-top:6px" onclick="localStorage.removeItem('f');histV()">إخفاء</button>`:''}</div>`
+}
+function logout(){
+  const n=qGet().length;
+  if(n&&!confirm('يوجد '+n+' عملية لم تُرسل بعد. إذا خرجت الآن ستضيع. هل تريد الخروج فعلاً؟'))return;
+  localStorage.removeItem('cache');if(n)localStorage.removeItem('q');
+  const done=()=>{Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));location.reload()};
+  db.auth.signOut().then(done,done)
+}
+function autoBackup(){
+  db.rpc('ensure_daily_backup',{p_shop:S.shop.id}).then(r=>{if(r&&r.data===true)toast('تم أخذ نسخة احتياطية تلقائية ✓')},()=>{})
+}
+
 /* ---- تثبيت التطبيق ---- */
 let IP=null;
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();IP=e;document.querySelectorAll('.ib').forEach(b=>b.style.display='')});
@@ -549,10 +639,16 @@ const GUIDE=[
 <li>الكاشير يبيع ويرى مبيعاته وينسخ الوصل، ولا يرى الأرباح ولا التكاليف ولا يلغي ولا يعدّل.</li>
 <li>إذا عندك أكثر من مستودع يمكنك <b>ربط كل كاشير بمستودع ثابت</b> من نفس الشاشة.</li></ul>`},
 {t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
-<li>إذا انقطع الإنترنت: يُحفظ البيع والشراء والسندات والمصاريف على الجهاز مؤقتاً وتُرسل تلقائياً عند عودته. بقية الشاشات تحتاج اتصالاً.</li>
+<li>إذا انقطع الإنترنت يظهر شريط أصفر أعلى الصفحة. تتابع البيع والشراء كالمعتاد، وتظهر رسالة تؤكد أن الفاتورة <b>حُفظت على جهازك وستُرحَّل تلقائياً عند عودة الاتصال</b> (ويمكنك طباعة الوصل). تجد العمليات المنتظرة في تبويب الفواتير.</li>
+<li><b>لا تسجّل الخروج</b> قبل أن تُرحَّل العمليات المنتظرة. وبقية الشاشات (التقارير، الحسابات...) تحتاج اتصالاً.</li>
 <li><b>للتثبيت كتطبيق:</b> افتح الموقع من Chrome، واضغط زر <b>📲 تثبيت التطبيق</b> أسفل الصفحة إن ظهر، أو النقاط الثلاث ثم <b>تثبيت التطبيق</b>. على الآيفون: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.</li>
 <li>إذا لم يظهر خيار التثبيت اضغط <b>فحص التثبيت</b> في آخر هذه الصفحة ليخبرك ما الناقص.</li>
 <li>مسح الباركود بالكاميرا يطلب إذن الكاميرا أول مرة، ويحتاج إنترنت مرة واحدة لتحميله.</li></ul>`},
+{t:'💾 النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
+<li>يأخذ البرنامج <b>نسخة تلقائية يومياً</b> عند فتحك له، ويحتفظ بآخر 7 نسخ. وتجدها في <b>التقارير ← النسخ الاحتياطي والاسترجاع</b>.</li>
+<li><b>إنشاء نسخة الآن</b> قبل أي عملية كبيرة، و<b>تنزيل على جهازي</b> لتحتفظ بملف خارج النظام (افعلها كل أسبوع).</li>
+<li><b>الاسترجاع:</b> اضغط "استرجاع" بجانب النسخة، أو اختر ملفاً محفوظاً. يستبدل كل بيانات المحل ببيانات النسخة، وكل ما سُجّل بعدها يُحذف. قبل الاسترجاع يأخذ البرنامج نسخة أمان تظهر بالقائمة، فتستطيع التراجع.</li>
+<li>أوقف الكاشير عن العمل أثناء الاسترجاع، وانتظر ترحيل أي عمليات بانتظار الإرسال قبله.</li></ul>`},
 {t:'🛡️ نصائح مهمة (للمالك)',o:1,h:`<ul>
 <li>نزّل <b>نسخة احتياطية</b> كل أسبوع (التقارير).</li>
 <li>أنشئ للكاشير حساباً خاصاً ولا تعطه حسابك.</li>
@@ -602,6 +698,7 @@ async function rmMember(u){
 /* ---- سجل الفواتير ---- */
 async function histV(){
   $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
+  if(!navigator.onLine){$('#v').innerHTML=pendHtml()+'<div class="card m">لا يوجد اتصال: تظهر هنا العمليات بانتظار الإرسال فقط. باقي الفواتير تظهر عند عودة الاتصال.</div>';return}
   if(S.role!='owner'){
     const {data,error}=await db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:40});
     if(error)return toast(error.message);
@@ -617,7 +714,7 @@ async function histV(){
   histList()
 }
 function histList(){
-  $('#v').innerHTML=`<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
+  $('#v').innerHTML=`${pendHtml()}<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
 }
 function showInv(k){
   const x=S.hist[k];
@@ -720,12 +817,12 @@ async function repV(){
   const T=tb.data||[],g=c=>+(T.find(x=>x.sys_code==c)||{balance:0}).balance;
   const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
   const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
-  $('#v').innerHTML=`<div class=card id=per></div><div class=card id=vl></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
+  $('#v').innerHTML=`<div class=card id=per></div><div class=card id=vl></div><div class=card id=bkc></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
   <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
   <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
-  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div><button class="b s" style="width:100%;margin-top:8px" onclick="backup()">تنزيل نسخة احتياطية (JSON)</button><div id=bk class=m style="margin-top:6px"></div></div>
+  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>
   <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`;
-  loadPeriod(0);vchList()
+  loadPeriod(0);vchList();bkCard()
 }
 async function vchList(){
   const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id});
@@ -760,22 +857,60 @@ async function all(t,cols='*',ord=['id']){
     o=o.concat(data);if(data.length<1000)return o;i+=1000
   }
 }
+const saveJson=(obj,name)=>{
+  const blob=new Blob([JSON.stringify(obj)],{type:'application/json'}),url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  return {url,kb:Math.round(blob.size/1024)}
+};
+const bsig=()=>{const c=new AbortController();setTimeout(()=>c.abort(),180000);return c.signal};
 async function backup(){
-  toast('جارٍ تجهيز النسخة الاحتياطية...');
-  try{
-    const d={exported_at:new Date().toISOString(),shop:S.shop};
-    for(const t of ['accounts','partners','sales','sale_items','purchases','purchase_items','stock_movements','journal_entries','journal_lines'])d[t]=await all(t);
-    d.products=await all('products','id,shop_id,name,barcode,unit,sale_price,sale_currency,stock_qty,min_stock,active,created_at');
-    const r=await db.rpc('product_costs',{p_shop:S.shop.id}),cm={};
-    (r.data||[]).forEach(x=>cm[x.id]=x.avg_cost);d.products.forEach(p=>p.avg_cost=cm[p.id]);
-    for(const [t,c,o] of [['warehouses','*',['id']],['stock_levels','*',['product_id','warehouse_id']],['bom_items','*',['id']],['production_orders','*',['id']],['production_items','*',['id']]]){
-      try{d[t]=await all(t,c,o)}catch(e){}
-    }
-    const blob=new Blob([JSON.stringify(d)],{type:'application/json'}),url=URL.createObjectURL(blob),name='backup-'+today()+'.json';
-    const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
-    if($('#bk'))$('#bk').innerHTML=`<a href="${url}" download="${name}">اضغط هنا إذا لم يبدأ التنزيل (${Math.round(blob.size/1024)} KB)</a>`;
-    toast('تم تجهيز النسخة الاحتياطية ✓')
-  }catch(e){toast('فشلت النسخة الاحتياطية: '+e.message)}
+  toast('جارٍ تجهيز النسخة...');
+  const {data,error}=await db.rpc('make_snapshot',{p_shop:S.shop.id}).abortSignal(bsig());
+  if(error)return toast('فشلت النسخة: '+error.message);
+  const name='wesam-backup-'+today()+'.json',f=saveJson(data,name);
+  if($('#bk'))$('#bk').innerHTML=`<a href="${f.url}" download="${name}">اضغط هنا إذا لم يبدأ التنزيل (${f.kb} KB)</a>`;
+  toast('تم تجهيز النسخة ✓')
+}
+async function bkCard(){
+  const el=$('#bkc');if(!el)return;
+  const {data,error}=await db.rpc('list_backups',{p_shop:S.shop.id});
+  if(error){el.innerHTML='<b>🛡️ النسخ الاحتياطي</b><div class=m>شغّل ملف phase1o_backup_restore.sql لتفعيل النسخ التلقائي والاسترجاع.</div>';return}
+  S.bks=data||[];
+  const K={auto:'تلقائية',manual:'يدوية',pre_restore:'أمان قبل استرجاع'},last=S.bks.find(b=>b.kind!='pre_restore');
+  el.innerHTML=`<b>🛡️ النسخ الاحتياطي والاسترجاع</b>
+  <div class=m>${last?'آخر نسخة: '+fdt(last.created_at):'لا توجد نسخ بعد'} · تؤخذ نسخة تلقائية يومياً وتُحفظ آخر 7 نسخ.</div>
+  <div class=row style="margin:8px 0"><button class=b onclick="bkNow()">إنشاء نسخة الآن</button><button class="b s" onclick="backup()">تنزيل على جهازي</button></div>
+  <div id=bk class=m></div>
+  ${S.bks.map(b=>`<div class=it><span>${K[b.kind]} · ${fdt(b.created_at)}<br><span class=m>فواتير بيع ${(b.counts||{}).sales||0} · قيود ${(b.counts||{}).journal_entries||0} · ${Math.round(b.size_bytes/1024)} KB</span></span><span style="display:flex;gap:6px"><button class="b s" style="padding:6px 10px" onclick="bkDl('${b.id}')">تنزيل</button><button class="b s neg" style="padding:6px 10px" onclick="bkRestore('${b.id}')">استرجاع</button></span></div>`).join('')}
+  <div class=m style="margin-top:10px">استرجاع من ملف نسخة محفوظ على جهازك:</div><input type=file id=bkf accept=".json,application/json" onchange="bkFile(this)">`
+}
+async function bkNow(){const r=await call('create_backup',{p_shop:S.shop.id});if(r!==undefined){toast('تم إنشاء النسخة ✓');bkCard()}}
+async function bkDl(id){
+  const {data,error}=await db.rpc('get_backup',{p_shop:S.shop.id,p_backup:id}).abortSignal(bsig());
+  if(error)return toast(error.message);
+  saveJson(data,'wesam-backup-'+String(data.taken_at||'').slice(0,10)+'.json');toast('تم التنزيل ✓')
+}
+function bkAsk(label){
+  if(!navigator.onLine){toast('الاسترجاع يحتاج اتصالاً بالإنترنت');return false}
+  if(qGet().length){toast('يوجد عمليات بانتظار الإرسال. انتظر ترحيلها أولاً.');return false}
+  if(!confirm('سيتم استبدال كل بيانات المحل ببيانات '+label+'.\nكل ما سُجّل بعدها سيُحذف.\nسنأخذ نسخة أمان قبل الاسترجاع لتتمكن من التراجع.\nتأكد أن الكاشير لا يستخدم البرنامج الآن.\n\nهل تريد المتابعة؟'))return false;
+  if(prompt('للتأكيد اكتب كلمة: استرجاع')!=='استرجاع'){toast('تم الإلغاء');return false}
+  return true
+}
+async function bkRun(fn,args){
+  toast('جارٍ الاسترجاع... لا تغلق الصفحة');
+  const {data,error}=await db.rpc(fn,args).abortSignal(bsig());
+  if(error)return toast('فشل الاسترجاع ولم يتغيّر شيء: '+error.message);
+  alert('تم الاسترجاع بنجاح ✓\nفواتير البيع: '+(data.sales||0)+'\nالقيود المحاسبية: '+(data.journal_entries||0)+'\nأخذنا نسخة أمان قبل الاسترجاع، تجدها بالقائمة إن أردت التراجع.');
+  localStorage.removeItem('cache');location.reload()
+}
+function bkRestore(id){const b=S.bks.find(x=>x.id==id);if(b&&bkAsk('نسخة '+fdt(b.created_at)))bkRun('restore_backup',{p_shop:S.shop.id,p_backup:id,p_confirm:'استرجاع'})}
+async function bkFile(inp){
+  const f=inp.files[0];if(!f)return;
+  let d;try{d=JSON.parse(await f.text())}catch(e){inp.value='';return toast('الملف غير صالح')}
+  if(d&&d.version===1&&d.tables){if(bkAsk('الملف '+f.name))bkRun('restore_from_json',{p_shop:S.shop.id,p_data:d,p_confirm:'استرجاع'})}
+  else toast('هذا الملف ليس بصيغة النسخ الجديدة. نزّل نسخة جديدة من هنا ثم استرجع منها.');
+  inp.value=''
 }
 /* ---- ماسح الباركود بالكاميرا ---- */
 let H5,SC=null;
