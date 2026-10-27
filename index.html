@@ -60,6 +60,9 @@ let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'sale',wh:l
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
 const whHint=id=>S.whs.filter(w=>w.id!=S.wh&&lvl(id,w.id)>0).map(w=>w.name+' ('+fmt(lvl(id,w.id))+')').join('، ');
 const rate=c=>c==='USD'?+S.shop.usd_rate:1;
+const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rep:['reports'],stock:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o'};
+const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 
 /* ---- الاتصال بالدوال + طابور الإرسال عند انقطاع الإنترنت ---- */
@@ -138,8 +141,8 @@ async function load(){
   if(!data||!data.length)return newShopView();
   S.shop=data[0];
   const {data:{session:ss}}=await db.auth.getSession(),user=ss.user;
-  const m=await db.from('shop_members').select('role,warehouse_id').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
-  S.role=(m.data||{}).role||'cashier';S.fixedWh=(m.data||{}).warehouse_id||null;
+  const m=await db.from('shop_members').select('role,warehouse_id,perms').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
+  S.role=(m.data||{}).role||'cashier';S.fixedWh=(m.data||{}).warehouse_id||null;S.perms=(m.data||{}).perms||['sell'];
   S.cached=false;
   await refresh();flush();shell();
   if(S.role=='owner')autoBackup()
@@ -152,10 +155,10 @@ async function refresh(){
   if(a.error||b.error)return;
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
   const cm={};
-  if(S.role=='owner'){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
+  if(can('costs')){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
   S.prods.forEach(p=>p.avg_cost=cm[p.id]||0);
   S.bom=[];
-  if(S.role=='owner'){const bb=await db.from('bom_items').select('product_id,component_id,qty');S.bom=bb.data||[]}
+  if(can('mfg')){const bb=await db.from('bom_items').select('product_id,component_id,qty');S.bom=bb.data||[]}
   const [w,l]=await Promise.all([
     db.from('warehouses').select('id,name,is_default').order('created_at'),
     db.from('stock_levels').select('product_id,warehouse_id,qty')]);
@@ -175,23 +178,23 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rep:'التقارير',stock:'المخزون',team:'الفريق',mfg:'التصنيع',acc:'الحسابات',help:'الدليل',open:'افتتاحي'};
+const TABS={sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   $('#app').innerHTML=`<header><div style="display:flex;gap:9px;align-items:center"><img src="icon-192.png" width=38 height=38 alt="" style="border-radius:10px"><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="logout()">خروج</button></header><div id=cs style="display:none"></div>
-  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&(S.role=='owner'||k=='sale'||k=='prod'||k=='hist'||k=='help')).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
+  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&tabOk(k)).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
   <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a><br><button class="b s ib" style="display:none;margin-top:8px" onclick="installApp()">📲 تثبيت التطبيق</button></footer>`;
   if(IP)document.querySelectorAll('.ib').forEach(b=>b.style.display='');
-  go(S.tab);pqUpdate()
+  go(tabOk(S.tab)?S.tab:(['sale','buy','hist','prod','help'].find(tabOk)));pqUpdate()
 }
 function go(k){
   S.tab=k;
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k==k));
-  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
 }
 async function setRate(){
   const v=prompt('سعر الدولار بالليرة',S.shop.usd_rate);if(!v)return;
@@ -201,7 +204,7 @@ async function setRate(){
 
 /* ---- فاتورة بيع / شراء ---- */
 function inv(){
-  const sale=S.mode=='sale',list=S.parts.filter(p=>p.kind==(sale?'customer':'supplier'));
+  const sale=S.mode=='sale',list=S.parts.filter(p=>p.kind==(sale?'customer':'supplier')||p.kind=='both');
   $('#v').innerHTML=`<div class=card><div class=row><input id=q placeholder="ابحث بالاسم أو امسح الباركود" oninput="srch()" onkeydown="if(event.key=='Enter')pickBar()"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanInv()">📷</button></div><div id=res></div></div>
   <div class=card><div id=cart></div>
   ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:S.whs.length>1?`<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch()">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
@@ -333,20 +336,41 @@ async function postOpen(){
 
 /* ---- تفاصيل الزبون/المورد وكشف الحساب ---- */
 async function partnerV(id){
-  const p=S.parts.find(x=>x.id==id),c=p.kind=='customer';
+  const p=S.parts.find(x=>x.id==id),c=p.kind!='supplier',sp=p.kind!='customer';
   const {data}=await db.from('partner_balances').select('receivable,payable').eq('id',id).single();
-  const v=data?(c?+data.receivable:+data.payable):0;
-  $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${c?'زبون':'مورد'}</span>
-  <h3 class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</h3>
-  <div class=row><button class=b onclick="pay('${id}','${c?'receipt':'payment'}')">${c?'سند قبض':'سند دفع'}</button><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button></div>
+  const r=data?+data.receivable:0,pa=data?+data.payable:0;
+  $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${KL(p.kind)}</span>${p.phone?`<div class=m dir=ltr style="text-align:right">${esc(p.phone)}</div>`:''}
+  ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}
+  <div class=row>${c?`<button class=b onclick="pay('${id}','receipt')">سند قبض</button>`:''}${sp?`<button class=b onclick="pay('${id}','payment')">سند دفع</button>`:''}</div>
+  <div class=row style="margin-top:8px"><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="debtV()">رجوع</button></div><div class=card id=stm></div>`;
-  stmtCard({partner:id,nat:c,title:'كشف حساب '+(c?'الزبون ':'المورد ')+p.name})
+  stmtCard({partner:id,nat:p.kind!='supplier',title:'كشف حساب '+KL(p.kind)+' '+p.name+(p.kind=='both'?' (الرصيد الصافي: موجب = لنا عليه، سالب = له علينا)':'')})
 }
 async function openBal(id){
-  const a=prompt('الرصيد الافتتاحي (المبلغ المستحق سابقاً)');if(!a||isNaN(+a)||+a<=0)return;
+  const p=S.parts.find(x=>x.id==id);let side=p.kind;
+  if(side=='both')side=confirm('هذا الطرف زبون ومورد.\nموافق = رصيد لنا عليه (كزبون)\nإلغاء = رصيد له علينا (كمورد)')?'customer':'supplier';
+  const a=prompt(side=='customer'?'الرصيد الافتتاحي: مبلغ مستحق لنا عليه':'الرصيد الافتتاحي: مبلغ مستحق علينا له');
+  if(!a||isNaN(+a)||+a<=0)return;
   const cur=confirm('بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
-  const r=await call('post_opening_partner',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
+  const r=await call('post_opening_balance',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_side:side,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
   if(r!==undefined){toast('تم ✓');partnerV(id)}
+}
+async function offsetP(id,max){
+  if(!(max>0))return toast('لا يوجد رصيدان متقابلان للمقاصة (لا بد أن يكون له علينا ولنا عليه)');
+  const a=prompt('مبلغ المقاصة بالليرة (حتى '+fmt(max)+')',max);if(!a||!(+a>0))return;
+  const r=await call('post_offset',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_amount:+a});
+  if(r!==undefined){toast('تمت المقاصة ✓');partnerV(id)}
+}
+async function editPartner(id){
+  const p=S.parts.find(x=>x.id==id);
+  const n=prompt('الاسم',p.name);if(!n||!n.trim())return;
+  const ph=prompt('الهاتف',p.phone||'')||'';
+  const k=prompt('النوع: 1 = زبون، 2 = مورد، 3 = زبون ومورد معاً',{customer:1,supplier:2,both:3}[p.kind]);
+  if(!k||!['1','2','3'].includes(k.trim()))return;
+  const kind={1:'customer',2:'supplier',3:'both'}[k.trim()];
+  const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind}).eq('id',id);
+  if(error)return toast(error.message);
+  await refresh();toast('تم الحفظ ✓');partnerV(id)
 }
 
 /* ---- الحسابات وكشوفها ---- */
@@ -358,9 +382,10 @@ async function acctV(){
   const {data,error}=await db.from('trial_balance').select('*').order('code');
   if(error)return toast(error.message);
   S.ac=data||[];
+  const csr=await db.rpc('cash_summary',{p_shop:S.shop.id});S.cs={};(csr.data||[]).forEach(x=>S.cs[x.account_id]=x);
   const row=(a,d)=>`<div class=it style="padding-inline-start:${d*14}px" onclick="acctOpen('${a.id}')"><span>${a.is_group?'📁 ':''}<b>${esc(a.code)}</b> ${esc(a.name)}</span><span class="${totOf(a)<0?'neg':''}">${fmt(totOf(a))}</span></div>`+(a.is_group?kidsOf(a.id).map(k=>row(k,d+1)).join(''):'');
-  $('#v').innerHTML=`<div class=card><b>الصناديق</b>${S.ac.filter(a=>a.is_cashbox).map(a=>`<div class=it onclick="acctOpen('${a.id}')"><span>${esc(a.name)}</span><b>${fmt(NAT(a))}</b></div>`).join('')}
-  <div class=row style="margin-top:8px"><button class="b s" onclick="addAcctForm(true)">+ صندوق</button><button class="b s" onclick="voucherForm('transfer')">تحويل بين الصناديق</button></div></div>
+  $('#v').innerHTML=`<div class=card><b>الصناديق</b>${S.ac.filter(a=>a.is_cashbox).map(a=>{const c=(S.cs||{})[a.id],u=a.sys_code=='1011'&&c;return `<div class=it onclick="acctOpen('${a.id}')"><span>${esc(a.name)}</span><b>${u?'$'+fmt(c.usd)+'<br><span class=m>'+fmt(NAT(a))+' ل.س</span>':fmt(NAT(a))}</b></div>`}).join('')}
+  <div class=row style="margin-top:8px"><button class="b s" onclick="addAcctForm(true)">+ صندوق</button><button class="b s" onclick="voucherForm('transfer')">تحويل بين الصناديق</button>${can('vouchers')?`<button class="b s" onclick="vchGo('exchange')">تصريف دولار</button>`:''}</div></div>
   <div class=card><b>شجرة الحسابات</b>${S.ac.filter(a=>!a.parent_id).map(a=>row(a,0)).join('')}
   <div class=row style="margin-top:8px"><button class="b s" onclick="addAcctForm(false)">+ حساب</button><button class="b s" onclick="voucherForm('voucher')">سند / قيد</button></div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="importForm()">استيراد دليل حسابات</button></div><div id=af></div>`
@@ -387,7 +412,7 @@ function acctOpen(id){
   <h3>الرصيد: ${fmt(totOf(a))}</h3>
   <div class=row><button class="b s" onclick="editAcctForm()">تعديل</button>${a.sys_code||a.is_group?'':`<button class="b s neg" onclick="delAcct()">حذف</button>`}<button class="b s" onclick="acctV()">رجوع</button></div><div id=af></div></div>
   <div class=card id=stm></div>`;
-  stmtCard({account:id,nat:a.type=='asset'||a.type=='expense',title:'كشف حساب '+a.code+' '+a.name})
+  stmtCard({account:id,usd:a.sys_code=='1011',nat:a.type=='asset'||a.type=='expense',title:'كشف حساب '+a.code+' '+a.name})
 }
 function editAcctForm(){
   const a=S.ca,par=S.ac.filter(x=>x.id!=a.id&&x.type==a.type&&(x.is_group||!x.sys_code)).map(x=>`<option value=${x.id} ${x.id==a.parent_id?'selected':''}>${esc(x.code)} ${esc(x.name)}`).join('');
@@ -443,13 +468,16 @@ async function stmtLoad(){
   const {data,error}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:o.account||null,p_partner:o.partner||null,p_from:f,p_to:t});
   if(error)return toast(error.message);
   S.sd=data||[];
-  $('#sr').innerHTML=S.sd.map(x=>`<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):'')}<br><b>${fmt(o.nat?+x.balance:-x.balance)}</b></span></div>`).join('')||'<div class=m>لا حركات</div>'
+  const bal=x=>o.nat?+x.balance:-x.balance,ub=x=>o.nat?+x.usd_balance:-x.usd_balance;
+  $('#sr').innerHTML=S.sd.map(x=>`<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${o.usd?(+x.usd_debit?'مدين $'+fmt(x.usd_debit):(+x.usd_credit?'دائن $'+fmt(x.usd_credit):'')):(+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):''))}<br><b>${o.usd?'$'+fmt(ub(x)):fmt(bal(x))}</b>${o.usd?`<br><span class=m>${fmt(bal(x))} ل.س</span>`:''}</span></div>`).join('')||'<div class=m>لا حركات</div>'
 }
 function stmtPrint(){
-  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?+S.sd[S.sd.length-1].balance:0;
-  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">${esc(o.title)}</div><div style="text-align:center">${f} ← ${t}</div><hr>
-  <table>${S.sd.map(x=>`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(o.nat?+x.balance:-x.balance)}`).join('')}</table><hr>
-  <b>الرصيد: ${fmt(o.nat?last:-last)}</b>`;
+  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null;
+  const bal=x=>o.nat?+x.balance:-x.balance,ub=x=>o.nat?+x.usd_balance:-x.usd_balance;
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)}${o.usd?' (بالدولار)':''}</div><div style="text-align:center">${f} ← ${t}</div><hr>
+  <table>${S.sd.map(x=>o.usd?`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.usd_debit?fmt(x.usd_debit):''}<td>${+x.usd_credit?fmt(x.usd_credit):''}<td>${fmt(ub(x))}`:`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(bal(x))}`).join('')}</table><hr>
+  <b>الرصيد: ${last?(o.usd?'$'+fmt(ub(last))+' ('+fmt(bal(last))+' ل.س)':fmt(bal(last))):0}</b>`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
 
@@ -518,12 +546,12 @@ async function rcpSave(){
 
 /* ---- حالة الاتصال والعمل بدون إنترنت ---- */
 function saveCache(){
-  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,wh:S.wh,t:Date.now()})}catch(e){}
+  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,perms:S.perms,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,wh:S.wh,t:Date.now()})}catch(e){}
 }
 function useCacheOk(){
   let c=null;try{c=JSON.parse(localStorage.cache||'null')}catch(e){}
   if(!c||!c.shop)return false;
-  S.shop=c.shop;S.role=c.role;S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
+  S.shop=c.shop;S.role=c.role;S.perms=c.perms||['sell'];S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
   shell();toast('تعمل الآن بدون اتصال على آخر بيانات محفوظة');return true
 }
 function pqUpdate(){
@@ -608,7 +636,7 @@ const GUIDE=[
 <li>نفس خطوات البيع، لكن تُدخل <b>سعر التكلفة</b> لكل وحدة، وتختار <b>المورد</b> إذا كان الشراء آجلاً.</li>
 <li>سعر التكلفة هو الذي يحدد ربحك، فتأكد منه. التكلفة تُحسب بمتوسط مرجح عند تكرار الشراء.</li></ul>`},
 {t:'💳 الديون وكشف الحساب',o:1,h:`<ul>
-<li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا).</li>
+<li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا) والأطراف التي هي زبون ومورد معاً (رصيدان).</li>
 <li>اضغط على الاسم: ترى كشف الحساب (بفترة من/إلى وطباعة)، وتسجّل <b>سند قبض</b> من الزبون أو <b>سند دفع</b> للمورد، أو <b>رصيد افتتاحي</b> لدين قديم.</li></ul>`},
 {t:'🧾 الفواتير',o:0,h:`<ul>
 <li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها ولطباعتها مجدداً.</li>
@@ -622,9 +650,8 @@ const GUIDE=[
 {t:'📊 التقارير',o:1,h:`<ul>
 <li>الملخص: الصندوق، ذمم الزبائن، قيمة المخزون، ذمم الموردين، المبيعات، وصافي الربح.</li>
 <li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ.</li>
-<li>أزرار <b>+ مصروف</b> و<b>+ رأس مال</b> و<b>سحب المالك</b> لتسجيل الحركات غير التجارية.</li>
-<li><b>آخر السندات:</b> يمكنك إلغاء أي سند أخطأت فيه (يُسجَّل قيد عكسي).</li>
-<li><b>تنزيل نسخة احتياطية:</b> يحفظ كل بياناتك بملف. افعلها كل أسبوع.</li></ul>`},
+<li>المصاريف والسندات وتصريف الدولار من تبويب <b>السندات</b>، والنسخ الاحتياطي من تبويبه المستقل.</li>
+</ul>`},
 {t:'🏭 التصنيع',o:1,h:`<ol>
 <li>عرّف المواد الخام والمنتج الجاهز في تبويب المنتجات، وسجّل مخزون المواد الخام.</li>
 <li>من تبويب <b>التصنيع</b> اكتب <b>الوصفة</b>: المواد اللازمة لوحدة واحدة من المنتج الجاهز.</li>
@@ -634,10 +661,27 @@ const GUIDE=[
 <li>تبويب <b>الحسابات</b> يعرض شجرة الحسابات. اضغط على أي حساب (أو صندوق) لترى كشف حسابه بفترة من/إلى مع الطباعة.</li>
 <li>يمكنك إضافة حساب تحت مجموعة، وإنشاء صناديق إضافية والتحويل بينها، وتسجيل سند أو قيد بين حسابين، واستيراد دليل حسابات جاهز.</li>
 <li>لا تعدّل الشجرة إلا إذا كنت تعرف المحاسبة. حسابات البرنامج الأساسية (الصندوق، الزبائن، المخزون، المبيعات...) تستطيع تغيير اسمها ورقمها بأمان.</li></ul>`},
-{t:'👥 الفريق والكاشير',o:1,h:`<ul>
-<li>الكاشير ينشئ حساباً بإيميله من شاشة الدخول، ثم تضيف إيميله من تبويب <b>الفريق</b>.</li>
-<li>الكاشير يبيع ويرى مبيعاته وينسخ الوصل، ولا يرى الأرباح ولا التكاليف ولا يلغي ولا يعدّل.</li>
-<li>إذا عندك أكثر من مستودع يمكنك <b>ربط كل كاشير بمستودع ثابت</b> من نفس الشاشة.</li></ul>`},
+{t:'🧾 السندات (قبض ودفع ومصروف وتصريف)',o:1,h:`<ul>
+<li>تبويب <b>السندات</b>: اختر نوع السند: <b>قبض</b> من زبون، <b>دفع</b> لمورد، <b>مصروف</b>، أو <b>تصريف دولار</b>.</li>
+<li>اختر الطرف واكتب المبلغ والعملة ثم <b>حفظ السند</b>. تحتها قائمة آخر السندات: اضغط 🖨 لطباعة سند بترويسة شركتك، أو <b>إلغاء</b> لعكسه (يبقى الأصل ظاهراً مشطوباً).</li>
+<li><b>الزبون والمورد معاً:</b> عند إضافة الطرف اختر "زبون ومورد معاً" (أو غيّر نوعه من صفحته بزر تعديل). يظهر في البيع والشراء، ويقبل منه ويدفع له، ويظهر له رصيدان: لنا عليه وله علينا. ولتسوية الرصيدين ببعضهما اضغط <b>مقاصة</b> من صفحته.</li></ul>`},
+{t:'💵 صندوق الدولار',o:1,h:`<ul>
+<li>للدولار صندوق مستقل اسمه <b>صندوق الدولار</b>. كل فاتورة نقدية بالدولار، وسند قبض أو دفع أو مصروف بالدولار، يدخل إليه أو يخرج منه تلقائياً. والعمليات بالليرة تمرّ على صندوق الليرة.</li>
+<li>رصيده يظهر <b>بالدولار</b> وبما يعادله بالليرة (حسب سعر كل عملية) في تبويب الحسابات وفي التقارير، وكشف حسابه بالدولار مع طباعة.</li>
+<li>لشراء أو بيع الدولار بالليرة استخدم <b>تصريف دولار</b> من تبويب السندات: يحرّك الصندوقين معاً.</li>
+<li>الدفاتر تبقى بالليرة، فلا تنسَ تحديث سعر الدولار (زر $ أعلى الصفحة).</li></ul>`},
+{t:'🏢 بيانات الشركة',o:1,h:`<ul>
+<li>من تبويب <b>بيانات الشركة</b> (للمالك) اكتب العنوان وأرقام الهاتف وملاحظة اختيارية.</li>
+<li>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة، والملاحظة أسفلها.</li></ul>`},
+{t:'🛡️ النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
+<li>تبويب <b>النسخ الاحتياطي</b> (للمالك): نسخ تلقائية يومياً، ونسخة الآن، وتنزيل أي نسخة كملف على جهازك، واسترجاع من نسخة محفوظة أو من ملف.</li>
+<li>قبل أي استرجاع يحفظ البرنامج نسخة بحالتك الحالية لتتراجع إن أردت.</li>
+<li>نزّل نسخة على جهازك كل أسبوع، فالنسخ المحفوظة داخل النظام لا تغني عن نسخة خارجه.</li></ul>`},
+{t:'👥 المستخدمون والصلاحيات',o:1,h:`<ul>
+<li>من تبويب <b>الفريق</b> (للمالك): المستخدم ينشئ حساباً بإيميله من شاشة الدخول (زر "حساب جديد")، ثم تكتب إيميله وتضيفه.</li>
+<li>اختر صلاحياته بالمربعات أو بقالب جاهز (كاشير، أمين مستودع، محاسب، مدير). الصلاحيات: البيع، رؤية كل الفواتير، تعديل وإلغاء الفواتير، الشراء، إدارة المنتجات، رؤية التكلفة، المخزون، السندات والديون، التقارير والأرباح، الحسابات، التصنيع.</li>
+<li>تظهر لكل مستخدم التبويبات المسموحة له فقط، والمنع مطبّق من قاعدة البيانات نفسها. الفريق والنسخ الاحتياطي وبيانات الشركة للمالك وحده.</li>
+<li>لتثبيت مبيعات مستخدم على مستودع معين اختر مستودعه من نفس الشاشة. للتعديل لاحقاً افتح "الصلاحيات" تحت اسمه ثم احفظ.</li></ul>`},
 {t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
 <li>إذا انقطع الإنترنت يظهر شريط أصفر أعلى الصفحة. تتابع البيع والشراء كالمعتاد، وتظهر رسالة تؤكد أن الفاتورة <b>حُفظت على جهازك وستُرحَّل تلقائياً عند عودة الاتصال</b> (ويمكنك طباعة الوصل). تجد العمليات المنتظرة في تبويب الفواتير.</li>
 <li><b>لا تسجّل الخروج</b> قبل أن تُرحَّل العمليات المنتظرة. وبقية الشاشات (التقارير، الحسابات...) تحتاج اتصالاً.</li>
@@ -663,7 +707,7 @@ const GUIDE=[
 <li><b>ظهرت رسالة خطأ غريبة:</b> صوّرها وأرسلها لنا عبر واتساب.</li></ul>`}
 ];
 function helpV(){
-  const own=S.role=='owner';
+  const own=canAny(['purchase','products','stock','vouchers','reports','accounts','mfg','edit_invoices']);
   $('#v').innerHTML=`<div class=card><b>دليل استخدام ${BRAND}</b><div class=m>اضغط على أي عنوان لفتحه.</div>
   ${GUIDE.filter(g=>own||!g.o).map(g=>`<details><summary>${g.t}</summary>${g.h}</details>`).join('')}</div>
   <div class=card><b>تثبيت التطبيق على جهازك</b><div class=row style="margin-top:8px"><button class="b ib" style="display:none" onclick="installApp()">📲 تثبيت التطبيق</button><button class="b s" onclick="checkInstall()">فحص التثبيت</button></div><div id=chk style="margin-top:8px"></div></div>
@@ -672,25 +716,47 @@ function helpV(){
 }
 
 /* ---- الفريق ---- */
+const PERMS=[['sell','البيع'],['invoices','رؤية كل الفواتير'],['edit_invoices','تعديل وإلغاء الفواتير'],['purchase','الشراء'],['products','إدارة المنتجات'],['costs','رؤية التكلفة'],['stock','المخزون والجرد والتحويل'],['vouchers','السندات والديون والمصاريف'],['reports','التقارير والأرباح'],['accounts','الحسابات والقيود'],['mfg','التصنيع']];
+const PRESETS={'كاشير':['sell'],'أمين مستودع':['purchase','products','stock'],'محاسب':['invoices','vouchers','reports','accounts','costs'],'مدير':PERMS.map(p=>p[0])};
+const permBoxes=(pre,sel)=>PERMS.map(([k,l])=>`<label class=m style="display:flex;gap:8px;align-items:center;margin:5px 0"><input type=checkbox class="${pre}" value="${k}" style="width:auto;margin:0" ${sel.includes(k)?'checked':''}> ${l}</label>`).join('');
+const permSel=pre=>[...document.querySelectorAll('.'+pre+':checked')].map(x=>x.value);
+const presetBtns=pre=>Object.keys(PRESETS).map(n=>`<button class="b s" style="padding:6px 10px" onclick="applyPreset('${pre}','${n}')">${n}</button>`).join(' ');
+function applyPreset(pre,name){const p=PRESETS[name]||[];document.querySelectorAll('.'+pre).forEach(x=>x.checked=p.includes(x.value))}
 async function teamV(){
   const {data,error}=await db.rpc('list_members',{p_shop:S.shop.id});
   if(error)return toast(error.message);
-  $('#v').innerHTML=`<div class=card><b>إضافة كاشير</b><div class=m>يجب أن يكون قد أنشأ حساباً بالموقع بهذا الإيميل</div>
-  <input id=ce type=email dir=ltr placeholder="إيميل الكاشير"><button class=b style="width:100%" onclick="addCashier()">إضافة</button></div>
-  <div class=card>${(data||[]).map(m=>`<div class=it><span dir=ltr>${esc(m.email)}<br><span class=m>${m.role=='owner'?'مالك':'كاشير'}</span></span>${m.role=='owner'?'':`${S.whs.length>1?`<select style="width:auto;flex:0" onchange="setMW('${m.user_id}',this.value)"><option value="">أي مستودع</option>${S.whs.map(w=>`<option value=${w.id} ${w.id==m.warehouse_id?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}<button class="b s neg" style="flex:0" onclick="rmMember('${m.user_id}')">إزالة</button>`}</div>`).join('')}</div>
-  ${S.whs.length>1?'<div class=m style="margin:0 4px">اختر مستودعاً للكاشير لتثبيت مبيعاته عليه، أو اتركه "أي مستودع" ليختار بنفسه.</div>':''}`
+  $('#v').innerHTML=`<div class=card><b>إضافة مستخدم</b>
+  <div class=m>يجب أن يكون المستخدم قد أنشأ حساباً بالموقع بهذا الإيميل (زر "حساب جديد").</div>
+  <input id=ce type=email dir=ltr placeholder="إيميل المستخدم">
+  <div class=m style="margin-top:6px">قوالب جاهزة للصلاحيات:</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0">${presetBtns('np')}</div>
+  <div>${permBoxes('np',['sell'])}</div>
+  <button class=b style="width:100%;margin-top:6px" onclick="addCashier()">إضافة المستخدم</button></div>
+  ${(data||[]).map(m=>{
+    if(m.role=='owner')return `<div class=card><span dir=ltr>${esc(m.email)}</span><div class=m>مالك الشركة: كل الصلاحيات، والفريق والنسخ الاحتياطي وبيانات الشركة له وحده.</div></div>`;
+    const pre='mp'+m.user_id.slice(0,8);
+    return `<div class=card><div class=it style="border:0;padding-top:0"><span dir=ltr>${esc(m.email)}</span><button class="b s neg" style="flex:0" onclick="rmMember('${m.user_id}')">إزالة</button></div>
+    ${S.whs.length>1?`<div class=m>المستودع:</div><select onchange="setMW('${m.user_id}',this.value)"><option value="">أي مستودع (يختار بنفسه)</option>${S.whs.map(w=>`<option value=${w.id} ${w.id==m.warehouse_id?'selected':''}>${esc(w.name)}`).join('')}</select>`:''}
+    <details><summary>الصلاحيات (${(m.perms||[]).length})</summary>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${presetBtns(pre)}</div>
+    ${permBoxes(pre,m.perms||[])}
+    <button class=b style="width:100%;margin-top:6px" onclick="saveMP('${m.user_id}')">حفظ الصلاحيات</button></details></div>`}).join('')}`
 }
 async function setMW(u,w){
   const r=await call('set_member_wh',{p_shop:S.shop.id,p_user:u,p_wh:w||null});
   if(r!==undefined)toast('تم الحفظ ✓')
 }
 async function addCashier(){
-  const e=$('#ce').value.trim();if(!e)return;
-  const r=await call('add_cashier',{p_shop:S.shop.id,p_email:e});
+  const e=$('#ce').value.trim();if(!e)return toast('اكتب إيميل المستخدم');
+  const r=await call('add_cashier',{p_shop:S.shop.id,p_email:e,p_perms:permSel('np')});
   if(r!==undefined){toast('تمت الإضافة ✓');teamV()}
 }
+async function saveMP(u){
+  const r=await call('set_member_perms',{p_shop:S.shop.id,p_user:u,p_perms:permSel('mp'+u.slice(0,8))});
+  if(r!==undefined){toast('تم حفظ الصلاحيات ✓');teamV()}
+}
 async function rmMember(u){
-  if(!confirm('إزالة هذا الكاشير؟'))return;
+  if(!confirm('إزالة هذا المستخدم؟'))return;
   const r=await call('remove_member',{p_shop:S.shop.id,p_user:u});
   if(r!==undefined)teamV()
 }
@@ -699,7 +765,7 @@ async function rmMember(u){
 async function histV(){
   $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
   if(!navigator.onLine){$('#v').innerHTML=pendHtml()+'<div class="card m">لا يوجد اتصال: تظهر هنا العمليات بانتظار الإرسال فقط. باقي الفواتير تظهر عند عودة الاتصال.</div>';return}
-  if(S.role!='owner'){
+  if(!canAny(['reports','edit_invoices'])){
     const {data,error}=await db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:40});
     if(error)return toast(error.message);
     S.hist=(data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,partners:{name:x.partner_name}}));
@@ -722,7 +788,7 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
   <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
-  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||S.role!='owner'?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||S.role!='owner'?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
@@ -740,19 +806,20 @@ async function voidInv(k){
 }
 function printInv(k){printObj(S.hist[k])}
 function printObj(x){
-  $('#rcpt').innerHTML=`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3><div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
   <table>${x.items.map(i=>`<tr><td>${esc(i.n)}<td>${fmt(i.q)}×${fmt(i.p)}<td>${fmt(i.q*i.p)}`).join('')}</table><hr>
   <b>الإجمالي: ${fmt(x.total)} ${x.currency}</b><br>المدفوع: ${fmt(x.paid)}<br>المتبقي: ${fmt(x.total-x.paid)}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
 
 /* ---- المنتجات ---- */
 function prodV(){
-  const ow=S.role=='owner';
+  const ow=can('products'),cs=can('costs');
   $('#v').innerHTML=`${ow?`<div class=card><b>منتج جديد</b><input id=pn placeholder="الاسم"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
   <div class=row><input id=pp type=number inputmode=decimal placeholder="سعر البيع"><select id=pc><option>SYP<option>USD</select></div>
   <input id=pm type=number inputmode=decimal placeholder="حد التنبيه للمخزون"><button class=b onclick="addProd()">حفظ</button></div>`:''}
-  <div class=card>${S.prods.map(p=>`<div class=it ${ow?`onclick="editP('${p.id}')"`:''}><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)}${ow?' · متوسط التكلفة '+fmt(p.avg_cost):''}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا منتجات بعد. المخزون يبدأ بفاتورة شراء.</div>'}
+  <div class=card>${S.prods.map(p=>`<div class=it ${ow?`onclick="editP('${p.id}')"`:''}><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)}${cs?' · متوسط التكلفة '+fmt(p.avg_cost):''}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا منتجات بعد. المخزون يبدأ بفاتورة شراء.</div>'}
   <div class=m>اضغط على المنتج لتعديله أو حذفه</div></div>`
 }
 const dupMsg=e=>e.code=='23505'?'هذا الباركود مسجّل لمنتج آخر':e.message;
@@ -787,13 +854,15 @@ async function delP(id){
 }
 
 /* ---- الديون ---- */
+const KL=k=>k=='customer'?'زبون':k=='supplier'?'مورد':'زبون ومورد';
 async function debtV(){
   const {data}=await db.from('partner_balances').select('*').order('name');
   $('#v').innerHTML=`<div class=card><b>زبون / مورد جديد</b><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف">
-  <select id=ak><option value=customer>زبون<option value=supplier>مورد</select><button class=b onclick="addPart()">حفظ</button></div>
-  <div class=card>${(data||[]).map(p=>{const c=p.kind=='customer',v=c?p.receivable:p.payable;
-  return `<div class=it onclick="partnerV('${p.id}')"><span>${esc(p.name)}<br><span class=m>${c?'زبون':'مورد'}</span></span><b class="${v>0?'neg':''}">${c?'عليه':'علينا'}: ${fmt(v)}</b></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
-  <div class=m>الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>`
+  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><button class=b onclick="addPart()">حفظ</button></div>
+  <div class=card>${(data||[]).map(p=>{const r=+p.receivable,pa=+p.payable;
+  const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه: ${fmt(r)}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا: ${fmt(pa)}</b>`:`<b>لنا: ${fmt(r)}<br>علينا: ${fmt(pa)}</b>`;
+  return `<div class=it onclick="partnerV('${p.id}')"><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}</span></span><span style="text-align:end">${amt}</span></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
+  <div class=m>الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب. لتسجيل سند قبض أو دفع بسرعة استخدم تبويب السندات.</div></div>`
 }
 async function addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -810,30 +879,20 @@ async function pay(id,kind){
 
 /* ---- التقارير ---- */
 async function repV(){
-  const [tb,dp,ls]=await Promise.all([
+  const [tb,dp,ls,cs]=await Promise.all([
     db.from('trial_balance').select('*').order('code'),
     db.from('daily_profit').select('*').order('entry_date',{ascending:false}).limit(7),
-    db.from('low_stock').select('name,stock_qty')]);
+    db.from('low_stock').select('name,stock_qty'),
+    db.rpc('cash_summary',{p_shop:S.shop.id})]);
   const T=tb.data||[],g=c=>+(T.find(x=>x.sys_code==c)||{balance:0}).balance;
   const profit=-T.filter(x=>x.type=='revenue'||x.type=='expense').reduce((s,x)=>s+ +x.balance,0);
-  const R=[['الصندوق',g('1010')],['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
-  $('#v').innerHTML=`<div class=card id=per></div><div class=card id=vl></div><div class=card id=bkc></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${fmt(v)}</b></div>`).join('')}<div class=m>كل الأرقام بالليرة</div></div>
+  const cashRows=(cs&&cs.data&&cs.data.length)?cs.data.map(c=>[c.name,c.sys_code=='1011'?'$'+fmt(c.usd)+' ('+fmt(c.base)+' ل.س)':+c.base]):[['الصندوق',g('1010')]];
+  const R=[...cashRows,['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
+  $('#v').innerHTML=`<div class=card id=per></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${typeof v=='string'?v:fmt(v)}</b></div>`).join('')}<div class=m>الأرقام بالليرة، وصندوق الدولار بالدولار وما يعادله.</div></div>
   <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
   <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
-  <div class=card><div class=row><button class=b onclick="expense()">+ مصروف</button><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>
   <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`;
-  loadPeriod(0);vchList();bkCard()
-}
-async function vchList(){
-  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id});
-  const el=$('#vl');if(!el)return;
-  const T={receipt:'سند قبض',payment:'سند دفع',expense:'مصروف',equity:'رأس مال/سحب'};
-  el.innerHTML='<b>آخر السندات</b>'+(error?'<div class=m>شغّل ملف phase1m لتفعيل هذا القسم</div>':(data||[]).map(v=>`<div class=it><span>${T[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${fmt(v.amount)}</b>${v.voided?'':`<br><button class="b s neg" style="padding:4px 10px" onclick="voidVch('${v.id}')">إلغاء</button>`}</span></div>`).join('')||'<div class=m>لا سندات بعد</div>')
-}
-async function voidVch(id){
-  if(!confirm('إلغاء هذا السند؟ سيُسجَّل قيد عكسي.'))return;
-  const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
-  if(r!==undefined){toast('تم إلغاء السند ✓');repV()}
+  loadPeriod(0)
 }
 async function loadPeriod(n,from,to){
   if(!from)[from,to]=[ld(new Date(Date.now()-n*864e5)),today()];
@@ -944,16 +1003,102 @@ function scanInv(){
     add(p.id);toast('أُضيف: '+p.name);if(navigator.vibrate)navigator.vibrate(60)
   },'امسح المنتجات تباعاً، واضغط إغلاق عند الانتهاء')
 }
-async function expense(){
-  const a=prompt('مبلغ المصروف بالليرة');if(!a)return;const d=prompt('البيان','مصروف');
-  const r=await call('record_expense',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:'SYP',p_rate:1,p_desc:d||'مصروف'},true);
-  if(r!==undefined)repV()
+/* ---- بيانات الشركة ---- */
+const coHdr=()=>`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3>${S.shop.address?`<div style="text-align:center;font-size:11px">${esc(S.shop.address)}</div>`:''}${S.shop.phones?`<div style="text-align:center;font-size:11px" dir=ltr>${esc(S.shop.phones)}</div>`:''}`;
+const coFtr=()=>S.shop.invoice_note?`<hr><div style="text-align:center">${esc(S.shop.invoice_note)}</div>`:'';
+function coV(){
+  const s=S.shop;
+  $('#v').innerHTML=`<div class=card><b>بيانات الشركة</b><div class=m>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة.</div>
+  <div class=m style="margin-top:8px">العنوان</div><input id=cad value="${esc(s.address||'')}" placeholder="مثال: حلب - الجميلية - شارع ...">
+  <div class=m>أرقام الهاتف (يمكنك كتابة أكثر من رقم)</div><input id=cph dir=ltr value="${esc(s.phones||'')}" placeholder="0933 000 000 - 021 000 0000">
+  <div class=m>ملاحظة أسفل الفاتورة (اختياري)</div><input id=cnt value="${esc(s.invoice_note||'')}" placeholder="مثال: شكراً لتعاملكم معنا">
+  <button class=b style="width:100%;margin-top:8px" onclick="saveCo()">حفظ</button></div>
+  <div class=card><b>معاينة رأس الفاتورة</b><div style="padding:10px 0">${coHdr()}</div>${coFtr()}</div>`
+}
+async function saveCo(){
+  const r=await call('set_shop_info',{p_shop:S.shop.id,p_address:$('#cad').value,p_phones:$('#cph').value,p_note:$('#cnt').value});
+  if(r!==undefined){await refresh();toast('تم الحفظ ✓');coV()}
+}
+
+/* ---- النسخ الاحتياطي (تبويب مستقل) ---- */
+function bkpV(){$('#v').innerHTML='<div class=card id=bkc></div>';bkCard()}
+
+/* ---- السندات: قبض ودفع ومصروف وتصريف ---- */
+const VT={receipt:'سند قبض',payment:'سند دفع',expense:'مصروف',offset:'مقاصة',exchange:'تصريف عملة',equity:'رأس مال / سحب'};
+async function vchV(){
+  $('#v').innerHTML=`<div class=card><b>سند جديد</b>
+  <select id=vk onchange="vchForm()"><option value=receipt>سند قبض (من زبون)<option value=payment>سند دفع (لمورد)<option value=expense>مصروف<option value=exchange>تصريف دولار</select>
+  <div id=vf></div></div>
+  ${can('accounts')?`<div class=card><div class=row><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>`:''}
+  <div class=card id=vl2><div class=m>جارٍ التحميل...</div></div>`;
+  vchForm();vchLoad()
+}
+function vchGo(k){go('vch');setTimeout(()=>{if($('#vk')){$('#vk').value=k;vchForm()}},0)}
+function vchForm(){
+  const k=$('#vk').value;let h='';
+  if(k=='receipt'||k=='payment'){
+    const L=S.parts.filter(p=>p.kind=='both'||p.kind==(k=='receipt'?'customer':'supplier'));
+    h=`<select id=vp><option value="">اختر ${k=='receipt'?'الزبون':'المورد'}${L.map(p=>`<option value=${p.id}>${esc(p.name)}${p.kind=='both'?' (زبون ومورد)':''}`).join('')}</select>
+    <div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcu><option>SYP<option>USD</select></div>`
+  }else if(k=='expense'){
+    h=`<input id=vn placeholder="البيان (مثال: إيجار، كهرباء)"><div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcu><option>SYP<option>USD</select></div>`
+  }else{
+    h=`<select id=vdir><option value=buy>شراء دولار بالليرة<option value=sell>بيع دولار بالليرة</select>
+    <input id=va type=number inputmode=decimal placeholder="المبلغ بالدولار">
+    <input id=vr type=number inputmode=decimal value="${S.shop.usd_rate}" placeholder="سعر الصرف (ليرة لكل دولار)">
+    <div class=m>يحرّك صندوق الليرة وصندوق الدولار معاً.</div>`
+  }
+  $('#vf').innerHTML=h+`<button class=b style="width:100%;margin-top:6px" onclick="vchSave()">حفظ السند</button>${k=='exchange'?'':'<div class=m>السند بالدولار يمرّ تلقائياً على صندوق الدولار، وبالليرة على صندوق الليرة.</div>'}`
+}
+async function vchSave(){
+  const k=$('#vk').value,a=+$('#va').value;
+  if(!(a>0))return toast('أدخل المبلغ');
+  let r;
+  if(k=='exchange'){
+    const rt=+$('#vr').value;if(!(rt>0))return toast('أدخل سعر الصرف');
+    r=await call('post_exchange',{p_shop:S.shop.id,p_client:uid(),p_direction:$('#vdir').value,p_usd:a,p_rate:rt},true)
+  }else if(k=='expense'){
+    const cu=$('#vcu').value;
+    r=await call('record_expense',{p_shop:S.shop.id,p_client:uid(),p_amount:a,p_currency:cu,p_rate:rate(cu),p_desc:$('#vn').value.trim()||'مصروف'},true)
+  }else{
+    const p=$('#vp').value;if(!p)return toast('اختر الطرف');
+    const cu=$('#vcu').value;
+    r=await call('record_payment',{p_shop:S.shop.id,p_client:uid(),p_partner:p,p_kind:k,p_amount:a,p_currency:cu,p_rate:rate(cu)},true)
+  }
+  if(r===undefined)return;
+  toast(r?'تم حفظ السند ✓':'لا يوجد اتصال: حُفظ وسيُرسل تلقائياً');
+  vchForm();vchLoad()
+}
+async function vchLoad(){
+  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id});
+  const el=$('#vl2');if(!el)return;
+  if(error){el.innerHTML='<b>آخر السندات</b><div class=m>'+esc(error.message)+'</div>';return}
+  S.vl=data||[];
+  el.innerHTML='<b>آخر السندات</b>'+(S.vl.map((v,k)=>{const u=v.currency=='USD'&&v.foreign_amount;
+    return `<div class=it><span>${VT[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${u?'$'+fmt(v.foreign_amount):fmt(v.amount)}</b>${u?`<br><span class=m>${fmt(v.amount)} ل.س</span>`:''}<br>${['receipt','payment','expense'].includes(v.ref_type)?`<button class="b s" style="padding:4px 10px" onclick="vchPrint(${k})">🖨</button> `:''}${v.voided?'':`<button class="b s neg" style="padding:4px 10px" onclick="voidV('${v.id}')">إلغاء</button>`}</span></div>`}).join('')||'<div class=m>لا سندات بعد</div>')
+}
+async function voidV(id){
+  if(!confirm('إلغاء هذا السند؟ سيُسجَّل قيد عكسي ويبقى السند الأصلي ظاهراً مشطوباً.'))return;
+  const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
+  if(r!==undefined){toast('تم إلغاء السند ✓');vchLoad()}
+}
+function vchPrint(k){
+  const v=S.vl[k],u=v.currency=='USD'&&v.foreign_amount;
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;margin:6px 0">${VT[v.ref_type]||v.ref_type}</div>
+  <div>التاريخ: ${v.entry_date}</div>
+  ${v.partner_name?`<div>${v.ref_type=='receipt'?'استلمنا من':'دفعنا إلى'}: ${esc(v.partner_name)}</div>`:''}
+  ${v.description&&!v.partner_name?`<div>البيان: ${esc(v.description)}</div>`:''}<hr>
+  <b>المبلغ: ${u?fmt(v.foreign_amount)+' دولار':fmt(v.amount)+' ل.س'}</b>${u?`<br>سعر الصرف: ${fmt(v.rate)} · ما يعادل ${fmt(v.amount)} ل.س`:''}${v.voided?'<br><b>(ملغى)</b>':''}<hr>
+  <div style="display:flex;justify-content:space-between;margin-top:20px"><span>المستلم</span><span>المحاسب</span></div>`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());print()
 }
 async function equity(dir){
-  const a=prompt(dir=='deposit'?'مبلغ رأس المال المُضاف (ليرة)':'مبلغ سحب المالك (ليرة)');if(!a)return;
-  const r=await call('record_equity',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:'SYP',p_rate:1,p_direction:dir},true);
-  if(r!==undefined)repV()
+  const a=prompt(dir=='deposit'?'مبلغ رأس المال المُضاف':'مبلغ سحب المالك');if(!a||!(+a>0))return;
+  const cu=confirm('بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
+  const r=await call('record_equity',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:cu,p_rate:rate(cu),p_direction:dir},true);
+  if(r!==undefined){toast('تم ✓');vchLoad()}
 }
+
 boot();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
