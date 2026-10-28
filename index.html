@@ -461,12 +461,37 @@ async function saveVoucher(){
 }
 function stmtCard(o){
   S.sc=o;
-  $('#stm').innerHTML=`<b>كشف الحساب</b><div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
+  $('#stm').innerHTML=`<b>كشف الحساب</b>${o.partner?`<div class=row style="margin:6px 0"><button id=sm1 class="b" onclick="stmtMode(0)">مختصر</button><button id=sm2 class="b s" onclick="stmtMode(1)">تفصيلي (بالمواد)</button></div>`:''}<div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
   <div class=row><button class=b onclick="stmtLoad()">عرض</button><button class="b s" onclick="stmtPrint()">طباعة</button></div><div id=sr></div>`;
   stmtLoad()
 }
+function stmtMode(d){
+  S.sc.det=!!d;
+  $('#sm1').className='b '+(d?'s':'');$('#sm2').className='b '+(d?'':'s');
+  stmtLoad()
+}
+async function stmtLoadDet(o,f,t){
+  const {data,error}=await db.rpc('partner_statement_detail',{p_shop:S.shop.id,p_partner:o.partner,p_from:f,p_to:t});
+  if(error)return toast(error.message);
+  S.sd=data||[];
+  const bal=x=>o.nat?+x.balance:-x.balance,cu=c=>c=='USD'?'$':'ل.س';
+  $('#sr').innerHTML=S.sd.map(x=>{const it=x.items&&x.items.length;
+    return `<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):'')}<br><b>${fmt(bal(x))}</b></span></div>${it?`<div class=m style="margin-top:6px;padding-inline-start:12px">${x.items.map(i=>esc(i.n)+' — '+fmt(i.q)+' × '+fmt(i.p)+' = '+fmt(i.t)).join('<br>')}<br><b>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</b></div>`:''}</div>`}).join('')||'<div class=m>لا حركات</div>'
+}
+function stmtPrintDet(){
+  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null;
+  const bal=x=>o.nat?+x.balance:-x.balance,cu=c=>c=='USD'?'$':'ل.س';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)} (تفصيلي)</div><div style="text-align:center">${f} ← ${t}</div><hr>
+  <table>${S.sd.map(x=>{const it=x.items&&x.items.length;
+    return `<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(bal(x))}`+(it?`<tr><td colspan=5 style="font-size:10px;padding-inline-start:10px">${x.items.map(i=>esc(i.n)+' '+fmt(i.q)+'×'+fmt(i.p)+'='+fmt(i.t)).join('<br>')}<br>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</td></tr>`:'')}).join('')}</table><hr>
+  <b>الرصيد: ${last?fmt(bal(last)):0}</b>`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  print()
+}
+
 async function stmtLoad(){
   const o=S.sc,f=$('#sf').value,t=$('#st').value;
+  if(o.partner&&o.det)return stmtLoadDet(o,f,t);
   const {data,error}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:o.account||null,p_partner:o.partner||null,p_from:f,p_to:t});
   if(error)return toast(error.message);
   S.sd=data||[];
@@ -474,6 +499,7 @@ async function stmtLoad(){
   $('#sr').innerHTML=S.sd.map(x=>`<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${o.usd?(+x.usd_debit?'مدين $'+fmt(x.usd_debit):(+x.usd_credit?'دائن $'+fmt(x.usd_credit):'')):(+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):''))}<br><b>${o.usd?'$'+fmt(ub(x)):fmt(bal(x))}</b>${o.usd?`<br><span class=m>${fmt(bal(x))} ل.س</span>`:''}</span></div>`).join('')||'<div class=m>لا حركات</div>'
 }
 function stmtPrint(){
+  if(S.sc.partner&&S.sc.det)return stmtPrintDet();
   const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null;
   const bal=x=>o.nat?+x.balance:-x.balance,ub=x=>o.nat?+x.usd_balance:-x.usd_balance;
   $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)}${o.usd?' (بالدولار)':''}</div><div style="text-align:center">${f} ← ${t}</div><hr>
@@ -639,6 +665,7 @@ const GUIDE=[
 <li>سعر التكلفة هو الذي يحدد ربحك، فتأكد منه. التكلفة تُحسب بمتوسط مرجح عند تكرار الشراء.</li></ul>`},
 {t:'💳 الديون وكشف الحساب',o:1,h:`<ul>
 <li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا) والأطراف التي هي زبون ومورد معاً (رصيدان).</li>
+<li>في كشف حساب الزبون أو المورد اختر <b>مختصر</b> (الحركات فقط) أو <b>تفصيلي (بالمواد)</b> لترى تحت كل فاتورة موادها وكمياتها وأسعارها وإجماليها والمدفوع منها، ويمكنك طباعة أي منهما.</li>
 <li>اضغط على الاسم: ترى كشف الحساب (بفترة من/إلى وطباعة)، وتسجّل <b>سند قبض</b> من الزبون أو <b>سند دفع</b> للمورد، أو <b>رصيد افتتاحي</b> لدين قديم.</li></ul>`},
 {t:'🧾 الفواتير',o:0,h:`<ul>
 <li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها ولطباعتها مجدداً.</li>
