@@ -731,7 +731,8 @@ const GUIDE=[
 <li><b>شريط أرصدة الصناديق</b> ثابت تحت التبويبات في كل الشاشات (لمن لديه صلاحية السندات أو التقارير أو الحسابات). يتحدّث بعد كل عملية، واضغط عليه لتحديثه يدوياً. بدون إنترنت أو مع عمليات معلّقة ينبّهك أن الأرصدة غير محدّثة.</li></ul>`},
 {t:'🏢 بيانات الشركة',o:1,h:`<ul>
 <li>من تبويب <b>بيانات الشركة</b> (للمالك) اكتب العنوان وأرقام الهاتف وملاحظة اختيارية.</li>
-<li>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة، والملاحظة أسفلها.</li></ul>`},
+<li>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة، والملاحظة أسفلها.</li>
+<li><b>البدء من الصفر:</b> من نفس التبويب زر <b>تصفير الشركة</b> يحذف كل العمليات (ويمكنك الاحتفاظ بقوائم المنتجات والزبائن والموردين)، ويحفظ قبله نسخة أمان تتراجع منها. وزر <b>حذف الشركة نهائياً</b> يحذف كل شيء بلا تراجع. نزّل نسخة على جهازك قبل أيٍّ منهما.</li></ul>`},
 {t:'🛡️ النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
 <li>تبويب <b>النسخ الاحتياطي</b> (للمالك): نسخ تلقائية يومياً، ونسخة الآن، وتنزيل أي نسخة كملف على جهازك، واسترجاع من نسخة محفوظة أو من ملف.</li>
 <li>قبل أي استرجاع يحفظ البرنامج نسخة بحالتك الحالية لتتراجع إن أردت.</li>
@@ -994,7 +995,7 @@ async function bkCard(){
   const {data,error}=await db.rpc('list_backups',{p_shop:S.shop.id});
   if(error){el.innerHTML='<b>🛡️ النسخ الاحتياطي</b><div class=m>شغّل ملف phase1o_backup_restore.sql لتفعيل النسخ التلقائي والاسترجاع.</div>';return}
   S.bks=data||[];
-  const K={auto:'تلقائية',manual:'يدوية',pre_restore:'أمان قبل استرجاع'},last=S.bks.find(b=>b.kind!='pre_restore');
+  const K={auto:'تلقائية',manual:'يدوية',pre_restore:'نسخة أمان (قبل استرجاع أو تصفير)'},last=S.bks.find(b=>b.kind!='pre_restore');
   el.innerHTML=`<b>🛡️ النسخ الاحتياطي والاسترجاع</b>
   <div class=m>${last?'آخر نسخة: '+fdt(last.created_at):'لا توجد نسخ بعد'} · تؤخذ نسخة تلقائية يومياً وتُحفظ آخر 7 نسخ.</div>
   <div class=row style="margin:8px 0"><button class=b onclick="bkNow()">إنشاء نسخة الآن</button><button class="b s" onclick="backup()">تنزيل على جهازي</button></div>
@@ -1072,8 +1073,37 @@ function coV(){
   <div class=m>أرقام الهاتف (يمكنك كتابة أكثر من رقم)</div><input id=cph dir=ltr value="${esc(s.phones||'')}" placeholder="0933 000 000 - 021 000 0000">
   <div class=m>ملاحظة أسفل الفاتورة (اختياري)</div><input id=cnt value="${esc(s.invoice_note||'')}" placeholder="مثال: شكراً لتعاملكم معنا">
   <button class=b style="width:100%;margin-top:8px" onclick="saveCo()">حفظ</button></div>
-  <div class=card><b>معاينة رأس الفاتورة</b><div style="padding:10px 0">${coHdr()}</div>${coFtr()}</div>`
+  <div class=card><b>معاينة رأس الفاتورة</b><div style="padding:10px 0">${coHdr()}</div>${coFtr()}</div>
+  <div class=card style="border-color:var(--r)"><b class=neg>⚠️ البدء من الصفر أو حذف الشركة</b>
+  <div class=m style="margin:6px 0">نزّل نسخة على جهازك أولاً. التصفير يحفظ نسخة أمان تتراجع منها، أما الحذف فنهائي.</div>
+  <button class="b s" style="width:100%" onclick="backup()">تنزيل نسخة على جهازك أولاً</button>
+  <label class=m style="display:flex;gap:8px;align-items:center;margin:10px 0 6px"><input type=checkbox id=kc checked style="width:auto;margin:0"> الاحتفاظ بقوائم المنتجات والزبائن والموردين (تصفير العمليات والأرصدة فقط)</label>
+  <button class="b s neg" style="width:100%" onclick="resetCo()">تصفير الشركة (البدء من الصفر)</button>
+  <button class="b s neg" style="width:100%;margin-top:8px" onclick="delCo()">حذف الشركة نهائياً</button>
+  <div id=bk class=m style="margin-top:6px"></div></div>`
 }
+/* ---- تصفير الشركة وحذفها ---- */
+const pendingOps=()=>JSON.parse(localStorage.q||'[]').length;
+async function resetCo(){
+  if(pendingOps())return toast('عندك عمليات معلّقة لم تُرحَّل بعد. انتظر ترحيلها ثم أعد المحاولة.');
+  const keep=$('#kc').checked;
+  if(!confirm('سيتم حذف كل الفواتير والسندات والقيود وحركات المخزون'+(keep?'، وتصفير كميات المنتجات وأرصدة الزبائن والموردين، مع الاحتفاظ بقوائم المنتجات والزبائن والموردين.':'، وكل المنتجات والزبائن والموردين والمستودعات الإضافية.')+'\n\nتبقى شجرة الحسابات وبيانات الشركة والفريق والاشتراك.\nيُحفظ قبلها نسخة أمان ترجع منها من تبويب النسخ الاحتياطي.\n\nهل تريد المتابعة؟'))return;
+  const w=prompt('للتأكيد اكتب كلمة: تصفير');if(w===null)return;
+  const r=await call('reset_shop',{p_shop:S.shop.id,p_keep_catalog:keep,p_confirm:w.trim()});
+  if(r===undefined)return;
+  localStorage.removeItem('f');S.cart=[];
+  await refresh();toast('تم تصفير الشركة ✓ (للتراجع: النسخ الاحتياطي ← نسخة الأمان)');go('sale')
+}
+async function delCo(){
+  if(pendingOps())return toast('عندك عمليات معلّقة لم تُرحَّل بعد. انتظر ترحيلها أولاً.');
+  const n=prompt('⚠️ حذف نهائي: يُحذف ملف الشركة بكل بياناته ونسخه الاحتياطية وفريقه، ولا يمكن التراجع.\nنزّل نسخة على جهازك قبل ذلك.\n\nللتأكيد اكتب اسم الشركة بالضبط:\n'+S.shop.name);
+  if(n===null)return;
+  const r=await call('delete_shop',{p_shop:S.shop.id,p_confirm:n.trim()});
+  if(r===undefined)return;
+  ['q','f','cache','wh'].forEach(k=>localStorage.removeItem(k));
+  alert('تم حذف الشركة نهائياً.');location.reload()
+}
+
 async function saveCo(){
   const r=await call('set_shop_info',{p_shop:S.shop.id,p_address:$('#cad').value,p_phones:$('#cph').value,p_note:$('#cnt').value});
   if(r!==undefined){await refresh();toast('تم الحفظ ✓');coV()}
