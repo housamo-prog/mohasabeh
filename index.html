@@ -14,7 +14,10 @@
 *{box-sizing:border-box}
 body{margin:0;font:15px system-ui,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--t)}
 header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;background:var(--c);border-bottom:1px solid var(--b)}
-nav{display:flex;overflow-x:auto;background:var(--c);border-bottom:1px solid var(--b);position:sticky;top:0}
+#stk{position:sticky;top:0;z-index:6;background:var(--c)}
+nav{display:flex;overflow-x:auto;background:var(--c);border-bottom:1px solid var(--b)}
+#cb{gap:8px;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--b);font-size:13px;cursor:pointer;background:var(--bg)}
+.chip{background:var(--c);border:1px solid var(--b);border-radius:10px;padding:3px 10px;white-space:nowrap}
 nav button{flex:1;min-width:72px;padding:11px 6px;border:0;background:none;color:var(--m);font:inherit;border-bottom:3px solid transparent}
 nav button.on{color:var(--p);border-color:var(--p);font-weight:700}
 main{padding:12px;max-width:720px;margin:auto}
@@ -90,10 +93,31 @@ async function call(fn,args,q){
   const enqueue=()=>{const Q=qGet();Q.push({fn,args,meta:qMeta(fn,args)});qSet(Q);optStock(fn,args);return null};
   if(q&&!navigator.onLine)return enqueue();
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
-  if(!error)return data||1;
+  if(!error){if(/^(post_|record_|void_|edit_)/.test(fn))setTimeout(()=>cashBar(true),300);return data||1}
   if(q&&bad(error))return enqueue();
   toast(/stock_levels|check constraint/.test(error.message)?'الكمية الإجمالية غير كافية في المخزون':error.message)
 }
+/* ---- شريط أرصدة الصناديق الثابت ---- */
+let CBT=0;
+async function cashBar(force){
+  if(!S.shop||!$('#cb'))return;
+  if(!navigator.onLine){cashBarDraw();return}
+  if(!force&&Date.now()-CBT<1500)return;
+  CBT=Date.now();
+  const {data,error}=await db.rpc('cash_summary',{p_shop:S.shop.id});
+  if(error||!data)return;
+  S.cbx=data;cashBarDraw()
+}
+function cashBarDraw(){
+  const el=$('#cb');if(!el)return;
+  if(!S.cbx||!S.cbx.length){el.style.display='none';return}
+  const q=JSON.parse(localStorage.q||'[]').length,off=!navigator.onLine;
+  el.style.display='flex';el.style.opacity=off?'.65':'1';
+  el.innerHTML=S.cbx.map(c=>{const u=c.sys_code=='1011',v=u?+c.usd:+c.base;
+    return `<span class=chip>${u?'💵':'🏦'} ${esc(c.name)} <b class="${v<0?'neg':''}">${u?'$'+fmt(v):fmt(v)}</b></span>`}).join('')
+    +((off||q)?`<span class=chip style="background:#fff3cd;color:#664d03">⏳ ${off?'بدون اتصال':q+' عملية معلّقة'}: الأرصدة غير محدّثة</span>`:'')
+}
+addEventListener('online',()=>cashBar(true));addEventListener('offline',cashBarDraw);
 let FL=false;
 async function flush(){
   if(FL||!navigator.onLine)return;
@@ -167,7 +191,7 @@ async function refresh(){
   (l.data||[]).forEach(x=>S.lv[x.product_id+'|'+x.warehouse_id]=+x.qty);
   if(!S.whs.find(x=>x.id==S.wh)){const sv=localStorage.wh;S.wh=(S.whs.find(x=>x.id==sv)||S.whs.find(x=>x.is_default)||S.whs[0]||{}).id||null}
   if(S.fixedWh&&S.whs.find(x=>x.id==S.fixedWh))S.wh=S.fixedWh;
-  saveCache()
+  cashBar();saveCache()
 }
 function newShopView(){
   $('#app').innerHTML=`<main><div class=card><h3>أنشئ محلك</h3><input id=sn placeholder="اسم المحل">
@@ -184,10 +208,10 @@ function shell(){
   $('#app').innerHTML=`<header><div style="display:flex;gap:9px;align-items:center"><img src="icon-192.png" width=38 height=38 alt="" style="border-radius:10px"><div><b>${esc(S.shop.name)}</b><br><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div></div>
   ${S.role=='owner'?`<button class="b s" onclick="setRate()">$ = ${fmt(S.shop.usd_rate)}</button>`:`<span class=m>$ = ${fmt(S.shop.usd_rate)}</span>`}
   <button class="b s" onclick="logout()">خروج</button></header><div id=cs style="display:none"></div>
-  <nav>${Object.entries(TABS).filter(([k])=>k!='open'&&tabOk(k)).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><main id=v></main>
+  <div id=stk><nav>${Object.entries(TABS).filter(([k])=>k!='open'&&tabOk(k)).map(([k,v])=>`<button data-k=${k} onclick="go('${k}')">${v}</button>`).join('')}</nav><div id=cb onclick="cashBar(true)" title="اضغط للتحديث" style="display:none"></div></div><main id=v></main>
   <footer class=m style="text-align:center;padding:4px 12px 18px">${BRAND} · <a href="${waLink()}" target=_blank rel=noopener>واتساب <span dir=ltr>${WAV}</span></a><br><button class="b s ib" style="display:none;margin-top:8px" onclick="installApp()">📲 تثبيت التطبيق</button></footer>`;
   if(IP)document.querySelectorAll('.ib').forEach(b=>b.style.display='');
-  go(tabOk(S.tab)?S.tab:(['sale','buy','hist','prod','help'].find(tabOk)));pqUpdate()
+  go(tabOk(S.tab)?S.tab:(['sale','buy','hist','prod','help'].find(tabOk)));pqUpdate();cashBarDraw();cashBar(true)
 }
 function go(k){
   S.tab=k;
@@ -703,7 +727,8 @@ const GUIDE=[
 <li>للدولار صندوق مستقل اسمه <b>صندوق الدولار</b>. كل فاتورة نقدية بالدولار، وسند قبض أو دفع أو مصروف بالدولار، يدخل إليه أو يخرج منه تلقائياً. والعمليات بالليرة تمرّ على صندوق الليرة.</li>
 <li>رصيده يظهر <b>بالدولار</b> وبما يعادله بالليرة (حسب سعر كل عملية) في تبويب الحسابات وفي التقارير، وكشف حسابه بالدولار مع طباعة.</li>
 <li>لشراء أو بيع الدولار بالليرة استخدم <b>تصريف دولار</b> من تبويب السندات: يحرّك الصندوقين معاً.</li>
-<li>الدفاتر تبقى بالليرة، فلا تنسَ تحديث سعر الدولار (زر $ أعلى الصفحة).</li></ul>`},
+<li>الدفاتر تبقى بالليرة، فلا تنسَ تحديث سعر الدولار (زر $ أعلى الصفحة).</li>
+<li><b>شريط أرصدة الصناديق</b> ثابت تحت التبويبات في كل الشاشات (لمن لديه صلاحية السندات أو التقارير أو الحسابات). يتحدّث بعد كل عملية، واضغط عليه لتحديثه يدوياً. بدون إنترنت أو مع عمليات معلّقة ينبّهك أن الأرصدة غير محدّثة.</li></ul>`},
 {t:'🏢 بيانات الشركة',o:1,h:`<ul>
 <li>من تبويب <b>بيانات الشركة</b> (للمالك) اكتب العنوان وأرقام الهاتف وملاحظة اختيارية.</li>
 <li>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة، والملاحظة أسفلها.</li></ul>`},
