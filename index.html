@@ -486,9 +486,104 @@ async function saveVoucher(){
 function stmtCard(o){
   S.sc=o;
   $('#stm').innerHTML=`<b>كشف الحساب</b>${o.partner?`<div class=row style="margin:6px 0"><button id=sm1 class="b" onclick="stmtMode(0)">مختصر</button><button id=sm2 class="b s" onclick="stmtMode(1)">تفصيلي (بالمواد)</button></div>`:''}<div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
-  <div class=row><button class=b onclick="stmtLoad()">عرض</button><button class="b s" onclick="stmtPrint()">طباعة</button></div><div id=sr></div>`;
+  <div class=row><button class=b onclick="stmtLoad()">عرض</button><button class="b s" onclick="stmtPrint()">طباعة</button></div>
+  <button class="b s" style="width:100%;margin-top:6px" onclick="stmtPdf()">📄 إرسال PDF عبر واتساب</button><div id=sr></div>`;
   stmtLoad()
 }
+/* ---- إرسال PDF عبر واتساب (فواتير وكشوف حساب) ---- */
+const waNum=p=>{let n=String(p||'').replace(/\D/g,'');if(n.startsWith('00'))n=n.slice(2);else if(n.startsWith('0'))n='963'+n.slice(1);else if(n.length==9)n='963'+n;return n};
+let PL=null;
+const loadScript=src=>new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>no(new Error('تعذّر تحميل مكتبة PDF، تحقق من الإنترنت'));document.head.appendChild(s)});
+const loadPdfLibs=()=>PL||(PL=Promise.all([loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'),loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')]).catch(e=>{PL=null;throw e}));
+const PDFLBL={sale:'فاتورة بيع',purchase:'فاتورة شراء'};
+const TH='style="background:#0f7b4f;color:#fff;padding:6px 8px;text-align:start;font-size:12px"',TD='style="padding:6px 8px;border-bottom:1px solid #ddd;font-size:12.5px"';
+function pdfPageHtml(p,i,n){
+  return `<div style="width:794px;height:1123px;overflow:hidden;padding:34px 40px;box-sizing:border-box;background:#fff;color:#111;direction:rtl;font-family:system-ui,Tahoma,'Segoe UI',sans-serif;font-size:14px;line-height:1.55;position:relative">
+  <div style="text-align:center;border-bottom:2px solid #0f7b4f;padding-bottom:8px;margin-bottom:10px"><div style="font-size:22px;font-weight:700;color:#0f7b4f">${esc(S.shop.name)}</div>${S.shop.address?`<div style="font-size:12px">${esc(S.shop.address)}</div>`:''}${S.shop.phones?`<div style="font-size:12px" dir=ltr>${esc(S.shop.phones)}</div>`:''}</div>
+  <div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:3px">${p.title}</div>${p.sub?`<div style="text-align:center;font-size:12px;color:#444;margin-bottom:10px">${p.sub}</div>`:''}
+  ${p.body}
+  <div style="position:absolute;bottom:22px;left:40px;right:40px;font-size:11px;color:#555;text-align:center;border-top:1px solid #ccc;padding-top:6px">${p.last&&S.shop.invoice_note?esc(S.shop.invoice_note)+' · ':''}صفحة ${i} من ${n}</div></div>`
+}
+async function pdfBuild(pages){
+  await loadPdfLibs();
+  const {jsPDF}=window.jspdf,pdf=new jsPDF({unit:'mm',format:'a4',compress:true});
+  for(let i=0;i<pages.length;i++){
+    const box=document.createElement('div');box.style.cssText='position:fixed;left:-12000px;top:0';
+    box.innerHTML=pdfPageHtml(pages[i],i+1,pages.length);document.body.appendChild(box);
+    const cv=await html2canvas(box.firstChild,{scale:2,backgroundColor:'#ffffff'});box.remove();
+    if(i)pdf.addPage();
+    pdf.addImage(cv.toDataURL('image/jpeg',0.9),'JPEG',0,0,210,297)
+  }
+  return pdf.output('blob')
+}
+function invPages(x){
+  const cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38)?10:14,ch=[];
+  for(let i=0;i<x.items.length;i+=N)ch.push(x.items.slice(i,i+N));if(!ch.length)ch.push([]);
+  return ch.map((c,pi)=>{const last=pi==ch.length-1;
+    const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>المرجع:</b> <span dir=ltr>${String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
+    +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية<th ${TH}>السعر<th ${TH}>الإجمالي</tr>${c.map((i,k)=>`<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}<td ${TD}>${fmt(i.q)}<td ${TD}>${fmt(i.p)}<td ${TD}>${fmt(i.q*i.p)}</tr>`).join('')}</table>`
+    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto"><div style="display:flex;justify-content:space-between"><span>الإجمالي</span><b>${fmt(x.total)} ${cu}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${fmt(x.paid)} ${cu}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${fmt(x.total-x.paid)} ${cu}</b></div></div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
+    return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
+}
+function stmtPages(o,f,t,rows,det){
+  const bal=x=>o.usd?(o.nat?+x.usd_balance:-x.usd_balance):(o.nat?+x.balance:-x.balance),
+    dr=x=>o.usd?x.usd_debit:x.debit,cr=x=>o.usd?x.usd_credit:x.credit,LIM=det?24:20,pages=[];
+  let cur=[],bud=0;
+  rows.forEach(x=>{const cost=det?1+((x.items&&x.items.length)?x.items.length+1:0):1;
+    if(cur.length&&bud+cost>LIM){pages.push(cur);cur=[];bud=0}cur.push(x);bud+=cost});
+  if(cur.length||!pages.length)pages.push(cur);
+  const last=rows.length?rows[rows.length-1]:null,cu=c=>c=='USD'?'$':'ل.س';
+  return pages.map((c,pi)=>{const isLast=pi==pages.length-1;
+    const body=`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>التاريخ<th ${TH}>البيان<th ${TH}>مدين<th ${TH}>دائن<th ${TH}>الرصيد</tr>${c.map(x=>{const it=det&&x.items&&x.items.length;
+      return `<tr><td ${TD}>${x.entry_date}<td ${TD}>${esc(x.description||'')}<td ${TD}>${+dr(x)?fmt(dr(x)):''}<td ${TD}>${+cr(x)?fmt(cr(x)):''}<td ${TD}><b>${fmt(bal(x))}</b></tr>`+(it?`<tr><td colspan=5 style="padding:3px 18px 8px;border-bottom:1px solid #ddd;font-size:11px;color:#333">${x.items.map(i=>esc(i.n)+' — '+fmt(i.q)+' × '+fmt(i.p)+' = '+fmt(i.t)).join('<br>')}<br><b>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</b></td></tr>`:'')}).join('')}</table>`
+      +(isLast?`<div style="margin-top:14px;text-align:end;font-size:16px"><b>الرصيد النهائي: ${last?fmt(bal(last)):0} ${o.usd?'$':'ل.س'}</b></div>`:'');
+    return {title:esc(o.title)+(det?' (تفصيلي)':''),sub:f+' ← '+t+(o.usd?' · بالدولار':''),body,last:isLast}})
+}
+function pdfDialog(blob,name,text,phone){
+  S.pdf={blob,name,text,phone};
+  const d=document.createElement('div');d.id='pdfd';d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:30;display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML=`<div class=card style="max-width:420px;width:100%;margin:0"><b>✅ ملف PDF جاهز</b><div class=m style="margin:6px 0" dir=ltr>${esc(name)} · ${Math.max(1,Math.round(blob.size/1024))} KB</div>
+  <button class=b style="width:100%;margin-top:6px" onclick="pdfShare()">📤 إرسال عبر واتساب (مشاركة الملف)</button>
+  ${phone?`<button class="b s" style="width:100%;margin-top:6px" onclick="pdfChat()">💬 فتح محادثة ${esc(S.pdfWho||'')} برسالة جاهزة</button>`:''}
+  <button class="b s" style="width:100%;margin-top:6px" onclick="pdfDownload()">⬇️ تنزيل الملف</button>
+  <div class=m style="margin-top:8px">عند "المشاركة" اختر واتساب ثم اختر جهة الاتصال. واتساب لا يسمح لأي موقع بإرفاق ملف بمحادثة محددة تلقائياً.</div>
+  <button class="b s" style="width:100%;margin-top:8px" onclick="document.getElementById('pdfd').remove()">إغلاق</button></div>`;
+  document.body.appendChild(d)
+}
+function pdfDownload(){
+  const o=S.pdf,a=document.createElement('a');a.href=URL.createObjectURL(o.blob);a.download=o.name;document.body.appendChild(a);a.click();a.remove();toast('تم تنزيل الملف')
+}
+function pdfChat(){const o=S.pdf;open('https://wa.me/'+waNum(o.phone)+'?text='+encodeURIComponent(o.text),'_blank')}
+async function pdfShare(){
+  const o=S.pdf,f=new File([o.blob],o.name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{await navigator.share({files:[f],title:o.name,text:o.text});return}catch(e){if(e&&e.name=='AbortError')return}
+  }
+  pdfDownload();
+  if(o.phone)pdfChat();else toast('تم تنزيل الملف. أرفقه بمحادثة واتساب يدوياً')
+}
+async function invPdf(k){
+  const x=S.hist[k];toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const who=x.partners?.name||'',cu=x.currency=='USD'?'$':'ل.س';
+    S.pdfWho=who;
+    const txt=`مرحباً${who?' '+who:''}،\nمرفق ${PDFLBL[x.kind]} بتاريخ ${x.date} من ${S.shop.name}.\nالإجمالي: ${fmt(x.total)} ${cu}${x.total-x.paid>0?'\nالمتبقي: '+fmt(x.total-x.paid)+' '+cu:''}`;
+    pdfDialog(await pdfBuild(invPages(x)),`${x.kind}-invoice-${x.date}-${String(x.id).slice(-6)}.pdf`,txt,x.partners?.phone||'')
+  }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+async function stmtPdf(){
+  const o=S.sc,f=$('#sf').value,t=$('#st').value;
+  if(!S.sd||!S.sd.length)return toast('اعرض الكشف أولاً');
+  toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const det=!!(o.partner&&o.det),p=o.partner?S.parts.find(x=>x.id==o.partner):null,last=S.sd[S.sd.length-1];
+    const b=o.usd?(o.nat?+last.usd_balance:-last.usd_balance):(o.nat?+last.balance:-last.balance);
+    S.pdfWho=p?p.name:'';
+    const txt=`مرحباً${p?' '+p.name:''}،\nمرفق كشف حساب${det?' تفصيلي':''} من ${f} إلى ${t} من ${S.shop.name}.\nالرصيد: ${fmt(b)} ${o.usd?'$':'ل.س'}`;
+    pdfDialog(await pdfBuild(stmtPages(o,f,t,S.sd,det)),`statement-${f}_${t}.pdf`,txt,p?p.phone||'':'')
+  }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+
 function stmtMode(d){
   S.sc.det=!!d;
   $('#sm1').className='b '+(d?'s':'');$('#sm2').className='b '+(d?'':'s');
@@ -694,6 +789,7 @@ const GUIDE=[
 {t:'🧾 الفواتير',o:0,h:`<ul>
 <li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها ولطباعتها مجدداً.</li>
 <li><b>المالك فقط:</b> زر <b>تعديل</b> يفتح الفاتورة للتعديل (تُلغى القديمة وتُسجَّل الجديدة تلقائياً)، وزر <b>إلغاء</b> يعكس الفاتورة ويعيد المخزون.</li>
+<li>زر <b>📄 إرسال PDF عبر واتساب</b> بصفحة الفاتورة: يجهّز ملف PDF بترويسة شركتك، ثم اختر <b>إرسال عبر واتساب</b> وحدّد جهة الاتصال، أو <b>فتح محادثة</b> الزبون برسالة جاهزة وأرفق الملف. وكذلك بكشف الحساب (المختصر والتفصيلي).</li>
 <li>الفاتورة الملغاة تبقى ظاهرة مشطوبة حفاظاً على السجل. تعديل أو إلغاء فاتورة شراء يُرفض إذا بِعتَ جزءاً من بضاعتها.</li></ul>`},
 {t:'🏬 المخزون والمستودعات',o:1,h:`<ul>
 <li>من تبويب <b>المخزون</b>: اختر المستودع الحالي، أضف مستودعاً جديداً، أو حوّل بضاعة بين مستودعين.</li>
@@ -742,6 +838,12 @@ const GUIDE=[
 <li>اختر صلاحياته بالمربعات أو بقالب جاهز (كاشير، أمين مستودع، محاسب، مدير). الصلاحيات: البيع، رؤية كل الفواتير، تعديل وإلغاء الفواتير، الشراء، إدارة المنتجات، رؤية التكلفة، المخزون، السندات والديون، التقارير والأرباح، الحسابات، التصنيع.</li>
 <li>تظهر لكل مستخدم التبويبات المسموحة له فقط، والمنع مطبّق من قاعدة البيانات نفسها. الفريق والنسخ الاحتياطي وبيانات الشركة للمالك وحده.</li>
 <li>لتثبيت مبيعات مستخدم على مستودع معين اختر مستودعه من نفس الشاشة. للتعديل لاحقاً افتح "الصلاحيات" تحت اسمه ثم احفظ.</li></ul>`},
+{t:'📄 إرسال الفواتير وكشوف الحساب PDF بالواتساب',o:0,h:`<ul>
+<li><b>فاتورة:</b> افتحها من تبويب الفواتير واضغط <b>📄 PDF / واتساب</b>.</li>
+<li><b>كشف حساب:</b> من صفحة الزبون أو المورد (تبويب الديون) اعرض الكشف (مختصر أو تفصيلي) ثم اضغط <b>📄 إرسال PDF عبر واتساب</b>.</li>
+<li>يجهّز البرنامج ملف PDF ببيانات شركتك، ثم تظهر نافذة: <b>إرسال عبر واتساب</b> (تختار واتساب ثم جهة الاتصال)، أو <b>فتح محادثة</b> الزبون برسالة جاهزة (إذا كان رقم هاتفه مسجّلاً)، أو <b>تنزيل الملف</b> لإرفاقه يدوياً.</li>
+<li>واتساب لا يسمح لأي موقع بإرفاق الملف بمحادثة محددة تلقائياً، لذلك تختار جهة الاتصال بنفسك. سجّل أرقام هواتف الزبائن بالصيغة المحلية (مثل 0933...) لتعمل المحادثة المباشرة.</li>
+<li>أول مرة يحتاج إنترنت لتحميل مكتبة إنشاء PDF.</li></ul>`},
 {t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
 <li>إذا انقطع الإنترنت يظهر شريط أصفر أعلى الصفحة. تتابع البيع والشراء كالمعتاد، وتظهر رسالة تؤكد أن الفاتورة <b>حُفظت على جهازك وستُرحَّل تلقائياً عند عودة الاتصال</b> (ويمكنك طباعة الوصل). تجد العمليات المنتظرة في تبويب الفواتير.</li>
 <li><b>لا تسجّل الخروج</b> قبل أن تُرحَّل العمليات المنتظرة. وبقية الشاشات (التقارير، الحسابات...) تحتاج اتصالاً.</li>
@@ -832,8 +934,8 @@ async function histV(){
     return histList()
   }
   const [s,p]=await Promise.all([
-    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),sale_items(product_id,qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
-    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name),purchase_items(product_id,qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
+    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name,phone),sale_items(product_id,qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
+    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
   S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price}))})),
     ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
     .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
@@ -848,7 +950,7 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
   <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
-  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button><button class="b s" onclick="invPdf(${k})">📄 PDF / واتساب</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
@@ -1162,105 +1264,4 @@ async function rcvSave(){
   if(!id)return toast('اختر الطرف');
   if(!(a>0))return toast('أدخل المبلغ');
   if(fx&&!(r>0))return toast('أدخل سعر الصرف');
-  const res=await call('post_settlement',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:S.rk,p_amount:a,p_pay_cur:pc,p_debt_cur:dc,p_rate:fx?r:1},true);
-  if(res===undefined)return;
-  toast(res?'تم حفظ السند ✓':'لا يوجد اتصال: حُفظ وسيُرسل تلقائياً');
-  S.rp=null;rcvV()
-}
-async function rcvLoad(){
-  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id,p_types:['receipt','payment']});
-  const el=$('#rl');if(!el)return;
-  if(error){el.innerHTML='<b>آخر السندات</b><div class=m>'+esc(error.message)+'</div>';return}
-  S.rl=data||[];
-  el.innerHTML='<b>آخر سندات القبض والدفع</b>'+(S.rl.map((v,k)=>{const u=v.currency=='USD'&&v.foreign_amount;
-    return `<div class=it><span>${VT[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||'')}</span><br><span class=m>${esc(v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${u?'$'+fmt(v.foreign_amount):fmt(v.amount)}</b>${u?`<br><span class=m>${fmt(v.amount)} ل.س</span>`:''}<br><button class="b s" style="padding:4px 10px" onclick="rcvPrint(${k})">🖨</button> ${v.voided?'':`<button class="b s neg" style="padding:4px 10px" onclick="rcvVoid('${v.id}')">إلغاء</button>`}</span></div>`}).join('')||'<div class=m>لا سندات بعد</div>')
-}
-function rcvPrint(k){S.vl=S.rl;vchPrint(k)}
-async function rcvVoid(id){
-  if(!confirm('إلغاء هذا السند؟ سيُسجَّل قيد عكسي ويعود رصيد الطرف كما كان.'))return;
-  const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
-  if(r!==undefined){toast('تم إلغاء السند ✓');rcvV()}
-}
-
-/* ---- السندات: مصروف وتصريف ---- */
-const VT={receipt:'سند قبض',payment:'سند دفع',expense:'مصروف',offset:'مقاصة',exchange:'تصريف عملة',equity:'رأس مال / سحب'};
-async function vchV(){
-  $('#v').innerHTML=`<div class=card><b>سند جديد</b>
-  <select id=vk onchange="vchForm()"><option value=expense>مصروف<option value=exchange>تصريف دولار</select>
-  <div id=vf></div></div>
-  ${can('accounts')?`<div class=card><div class=row><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>`:''}
-  <div class=card id=vl2><div class=m>جارٍ التحميل...</div></div>`;
-  vchForm();vchLoad()
-}
-function vchGo(k){go('vch');setTimeout(()=>{if($('#vk')){$('#vk').value=k;vchForm()}},0)}
-function vchForm(){
-  const k=$('#vk').value;let h='';
-  if(k=='receipt'||k=='payment'){
-    const L=S.parts.filter(p=>p.kind=='both'||p.kind==(k=='receipt'?'customer':'supplier'));
-    h=`<select id=vp><option value="">اختر ${k=='receipt'?'الزبون':'المورد'}${L.map(p=>`<option value=${p.id}>${esc(p.name)}${p.kind=='both'?' (زبون ومورد)':''}`).join('')}</select>
-    <div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcu><option>SYP<option>USD</select></div>`
-  }else if(k=='expense'){
-    h=`<input id=vn placeholder="البيان (مثال: إيجار، كهرباء)"><div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcu><option>SYP<option>USD</select></div>`
-  }else{
-    h=`<select id=vdir><option value=buy>شراء دولار بالليرة<option value=sell>بيع دولار بالليرة</select>
-    <input id=va type=number inputmode=decimal placeholder="المبلغ بالدولار">
-    <input id=vr type=number inputmode=decimal value="${S.shop.usd_rate}" placeholder="سعر الصرف (ليرة لكل دولار)">
-    <div class=m>يحرّك صندوق الليرة وصندوق الدولار معاً.</div>`
-  }
-  $('#vf').innerHTML=h+`<button class=b style="width:100%;margin-top:6px" onclick="vchSave()">حفظ السند</button>${k=='exchange'?'':'<div class=m>السند بالدولار يمرّ تلقائياً على صندوق الدولار، وبالليرة على صندوق الليرة.</div>'}`
-}
-async function vchSave(){
-  const k=$('#vk').value,a=+$('#va').value;
-  if(!(a>0))return toast('أدخل المبلغ');
-  let r;
-  if(k=='exchange'){
-    const rt=+$('#vr').value;if(!(rt>0))return toast('أدخل سعر الصرف');
-    r=await call('post_exchange',{p_shop:S.shop.id,p_client:uid(),p_direction:$('#vdir').value,p_usd:a,p_rate:rt},true)
-  }else if(k=='expense'){
-    const cu=$('#vcu').value;
-    r=await call('record_expense',{p_shop:S.shop.id,p_client:uid(),p_amount:a,p_currency:cu,p_rate:rate(cu),p_desc:$('#vn').value.trim()||'مصروف'},true)
-  }else{
-    const p=$('#vp').value;if(!p)return toast('اختر الطرف');
-    const cu=$('#vcu').value;
-    r=await call('record_payment',{p_shop:S.shop.id,p_client:uid(),p_partner:p,p_kind:k,p_amount:a,p_currency:cu,p_rate:rate(cu)},true)
-  }
-  if(r===undefined)return;
-  toast(r?'تم حفظ السند ✓':'لا يوجد اتصال: حُفظ وسيُرسل تلقائياً');
-  vchForm();vchLoad()
-}
-async function vchLoad(){
-  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id,p_types:['expense','exchange','offset','equity']});
-  const el=$('#vl2');if(!el)return;
-  if(error){el.innerHTML='<b>آخر السندات</b><div class=m>'+esc(error.message)+'</div>';return}
-  S.vl=data||[];
-  el.innerHTML='<b>آخر السندات</b>'+(S.vl.map((v,k)=>{const u=v.currency=='USD'&&v.foreign_amount;
-    return `<div class=it><span>${VT[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${u?'$'+fmt(v.foreign_amount):fmt(v.amount)}</b>${u?`<br><span class=m>${fmt(v.amount)} ل.س</span>`:''}<br>${['receipt','payment','expense'].includes(v.ref_type)?`<button class="b s" style="padding:4px 10px" onclick="vchPrint(${k})">🖨</button> `:''}${v.voided?'':`<button class="b s neg" style="padding:4px 10px" onclick="voidV('${v.id}')">إلغاء</button>`}</span></div>`}).join('')||'<div class=m>لا سندات بعد</div>')
-}
-async function voidV(id){
-  if(!confirm('إلغاء هذا السند؟ سيُسجَّل قيد عكسي ويبقى السند الأصلي ظاهراً مشطوباً.'))return;
-  const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
-  if(r!==undefined){toast('تم إلغاء السند ✓');vchLoad()}
-}
-function vchPrint(k){
-  const v=S.vl[k],u=v.currency=='USD'&&v.foreign_amount;
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;margin:6px 0">${VT[v.ref_type]||v.ref_type}</div>
-  <div>التاريخ: ${v.entry_date}</div>
-  ${v.partner_name?`<div>${v.ref_type=='receipt'?'استلمنا من':'دفعنا إلى'}: ${esc(v.partner_name)}</div>`:''}
-  ${v.description&&!v.partner_name?`<div>البيان: ${esc(v.description)}</div>`:''}
-  ${v.partner_name&&v.description&&v.description.length>10?`<div style="font-size:11px">${esc(v.description)}</div>`:''}<hr>
-  <b>المبلغ: ${u?fmt(v.foreign_amount)+' دولار':fmt(v.amount)+' ل.س'}</b>${u?`<br>سعر الصرف: ${fmt(v.rate)} · ما يعادل ${fmt(v.amount)} ل.س`:''}${v.voided?'<br><b>(ملغى)</b>':''}<hr>
-  <div style="display:flex;justify-content:space-between;margin-top:20px"><span>المستلم</span><span>المحاسب</span></div>`;
-  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());print()
-}
-async function equity(dir){
-  const a=prompt(dir=='deposit'?'مبلغ رأس المال المُضاف':'مبلغ سحب المالك');if(!a||!(+a>0))return;
-  const cu=confirm('بالدولار؟ (موافق = دولار، إلغاء = ليرة)')?'USD':'SYP';
-  const r=await call('record_equity',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:cu,p_rate:rate(cu),p_direction:dir},true);
-  if(r!==undefined){toast('تم ✓');vchLoad()}
-}
-
-boot();
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-</script>
-</body>
-</html>
+  const res=await call('post_settlement',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:S.rk,p_amount:a,p_pay_cur:pc,p_debt_cur:dc,p
