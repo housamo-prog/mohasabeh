@@ -344,6 +344,27 @@ async function homeV(){
    .then(L=>{if(!alive()||!$('#hrec'))return;if(!L){$('#hrec').style.display='none';return}
     $('#hrec').innerHTML=secH('hist','آخر الفواتير','hist')+(L.length?L.map(x=>`<div class="it cl" onclick="nav('hist')"><span>${esc(x.pn||'نقدي')}<br><span class=m>${x.sale_date}${+x.paid<+x.total&&!x.voided_at?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} <small class=m>${x.currency}</small></b></div>`).join(''):'<div class=empty>لا فواتير بعد. ابدأ من زر بيع جديد.</div>')},()=>{});
 }
+
+/* ---- زر الرجوع ---- */
+let BX=0,BT=null;
+const armBack=()=>{if(!(history.state&&history.state.guard))history.pushState({guard:1},'')};
+function backAct(){
+  const dg=[...document.querySelectorAll('.dlg-bg')].pop();
+  if(dg){document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true}
+  const pd=$('#pdfd');if(pd){pd.remove();return true}
+  const sc=$('#scan');if(sc&&sc.style.display=='flex'){closeScan();return true}
+  const dn=$('#done');if(dn){const c=dn.querySelector('#dc');c?c.click():dn.remove();return true}
+  if(document.body.classList.contains('drw')){drawer(0);return true}
+  if(S.shop&&$('#bn')&&S.tab!='home'&&tabOk('home')){nav('home');return true}
+  return false}
+addEventListener('popstate',()=>{
+  clearTimeout(BT);
+  if(backAct()){armBack();return}
+  if(Date.now()-BX<2000)return;            // الضغطة الثانية: نترك المتصفح يغلق التطبيق
+  BX=Date.now();toast('اضغط رجوع مرة أخرى للخروج');
+  BT=setTimeout(armBack,2000);             // انتهت المهلة: نعيد الحماية
+});
+history.replaceState({base:1},'');armBack();
 /* ---- الوضع الليلي ---- */
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t=='dark':matchMedia('(prefers-color-scheme: dark)').matches};
 function themeSync(){const d=isDark();document.querySelectorAll('.thb').forEach(b=>{b.innerHTML=ic(d?'sun':'moon');b.title=b.ariaLabel=d?'الوضع الفاتح':'الوضع الداكن'});document.querySelectorAll('.thl').forEach(l=>l.textContent=d?'الوضع الفاتح':'الوضع الداكن');const m=document.querySelector('meta[name=theme-color]');if(m)m.content=d?'#161b20':'#0f7b4f'}
