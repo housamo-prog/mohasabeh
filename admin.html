@@ -55,11 +55,11 @@ const days=d=>Math.ceil((new Date(d)-new Date(new Date().toDateString()))/864e5)
 function view(){
   const q=($('#q')?$('#q').value:'').trim().toLowerCase();
   const list=SH.filter(s=>!q||s.name.toLowerCase().includes(q)||s.owner_email.toLowerCase().includes(q));
-  const act=SH.filter(s=>days(s.subscription_until)>=0).length;
-  $('#app').innerHTML=`<div class=card><b>${SH.length} محل</b> · <span class=ok>${act} فعّال</span> · <span class=neg>${SH.length-act} منتهي</span>
+  const act=SH.filter(s=>days(s.subscription_until)>=0).length,dups=SH.filter(s=>+s.dup_count>1).length;
+  $('#app').innerHTML=`<div class=card><b>${SH.length} محل</b> · <span class=ok>${act} فعّال</span> · <span class=neg>${SH.length-act} منتهي</span>${dups?`<div class=neg style="margin:6px 0">⚠️ ${dups} سجل مكرر (نفس المالك والاسم)</div><button class=s style="width:100%" onclick="cleanDup()">🧹 تنظيف النسخ المكررة الفارغة</button><div class=m style="margin-top:4px">يحذف النسخ الفارغة فقط، ويبقي أغنى نسخة بالبيانات مع أطول اشتراك. ما فيه بيانات أو مستخدمين إضافيين لا يُحذف.</div>`:''}
   <input id=q placeholder="بحث بالاسم أو الإيميل" value="${esc(q)}" oninput="view();$('#q').focus()"></div>
-  ${list.map(s=>{const d=days(s.subscription_until);return `<div class=card><b>${esc(s.name)}</b><div class=m dir=ltr style="text-align:right">${esc(s.owner_email)}</div>
-  <div class=m>سُجّل ${s.created_at.slice(0,10)} · ${s.members} مستخدم</div>
+  ${list.map(s=>{const d=days(s.subscription_until);return `<div class=card><b>${esc(s.name)}</b>${+s.dup_count>1?` <span class=neg>⚠️ مكرر (${s.dup_count} نسخ)</span>`:''}<div class=m dir=ltr style="text-align:right">${esc(s.owner_email)}</div>
+  <div class=m>سُجّل ${s.created_at.slice(0,10)} · ${s.members} مستخدم · بيانات: ${s.data_rows} · رقم: <span dir=ltr>${String(s.id).slice(-6)}</span></div>
   <div class="${d<0?'neg':'ok'}" style="margin:6px 0"><b>${d<0?'انتهى منذ '+(-d)+' يوم':'ينتهي بعد '+d+' يوم'}</b> <span class=m>(${s.subscription_until})</span></div>
   <div class=row><button onclick="ext('${s.id}',30)">+30 يوم</button><button onclick="ext('${s.id}',90)">+90</button><button onclick="ext('${s.id}',365)">+سنة</button><button class=s onclick="custom('${s.id}')">يدوي</button></div></div>`}).join('')}
   <button class=s onclick="db.auth.signOut().then(()=>location.reload())">خروج</button>`
@@ -71,8 +71,15 @@ async function ext(id,d){
   if(error)return toast(error.message);
   toast('تم ✓ ينتهي الآن: '+data);load()
 }
+async function cleanDup(){
+  if(!confirm('سيُحذف كل سجل مكرر فارغ (بدون بيانات). تُبقى أغنى نسخة مع أطول اشتراك. متابعة؟'))return;
+  const {data,error}=await db.rpc('admin_cleanup_duplicates');
+  if(error)return toast(error.message);
+  toast('حُذفت '+data.deleted+' نسخة فارغة'+(data.kept_with_data?'، وتبقى '+data.kept_with_data+' نسخة فيها بيانات لتراجعها يدوياً':'')+' ✓');load()
+}
 function custom(id){const v=prompt('عدد الأيام (يمكن أن يكون سالباً للتصحيح)','30');if(v)ext(id,parseInt(v,10))}
 boot();
 </script>
 </body>
 </html>
+
