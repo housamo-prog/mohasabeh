@@ -288,6 +288,7 @@ const whHint=id=>S.whs.filter(w=>w.id!=S.wh&&lvl(id,w.id)>0).map(w=>w.name+' ('+
 const rate=c=>{if(c==='SYP')return 1;if(c==='USD')return +S.shop?.usd_rate||1;const x=(S.currencies||[]).find(v=>v.code===c);return +(x?.rate_to_syp)||1};
 const curRows=()=>{const a=(S.currencies||[]).filter(x=>x.is_active!==false);return a.length?a:[{code:'SYP',name:'ليرة سورية',rate_to_syp:1},{code:'USD',name:'دولار أمريكي',rate_to_syp:+S.shop?.usd_rate||1}]};
 const curOptions=(selected='SYP')=>curRows().map(c=>`<option value="${esc(c.code)}"${c.code===selected?' selected':''}>${esc(c.name)} (${esc(c.code)})</option>`).join('');
+const curDlgOptions=()=>curRows().map(c=>[c.code,`${c.name} (${c.code})`]);
 const tierName=t=>({retail:'المفرق',semi_wholesale:'نصف الجملة',wholesale:'الجملة'}[t]||'المفرق');
 const tierPrice=(p,t)=>{const v=t==='wholesale'?p.wholesale_price:t==='semi_wholesale'?p.semi_wholesale_price:p.retail_price;return v==null||v===''?+p.sale_price||0:+v};
 const partnerTier=()=>{const p=S.parts.find(x=>x.id===(($('#pt')||{}).value||''));return p?.price_tier||'retail'};
@@ -717,9 +718,9 @@ function pmCh(){
   $('#pt').style.borderColor=(pm!='cash'&&!$('#pt').value)?'var(--r)':'';optSum();chgV()
 }
 async function newPartner(){
-  const sale=S.mode=='sale',f=await dlg({title:sale?'زبون جديد':'مورد جديد',icon:'users',yes:'إضافة',fields:[{k:'n',label:'الاسم'},{k:'ph',label:'رقم الهاتف (اختياري)',tel:true},{k:'tier',label:'فئة سعر البيع',val:'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
+  const sale=S.mode=='sale',f=await dlg({title:sale?'زبون جديد':'مورد جديد',icon:'users',yes:'إضافة',fields:[{k:'n',label:'الاسم'},{k:'ph',label:'رقم الهاتف (اختياري)',tel:true},{k:'tier',label:'فئة سعر البيع',val:'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:'SYP',opts:curDlgOptions()}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'';
-  const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier',price_tier:f.tier||'retail'}).select('id').single();
+  const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier',price_tier:f.tier||'retail',account_currency:f.currency||'SYP'}).select('id').single();
   if(error)return toast(error.message);
   const pmv=$('#pm').value,pv=$('#paid').value;
   await refresh();inv();
@@ -900,11 +901,11 @@ async function offsetP(id,max){
 }
 async function editPartner(id){
   const p=S.parts.find(x=>x.id==id);
-  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
+  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:p.account_currency||'SYP',opts:curDlgOptions()}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'',k=f.k;
   if(!k||!['1','2','3'].includes(k.trim()))return;
   const kind={1:'customer',2:'supplier',3:'both'}[k.trim()];
-  const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind,price_tier:f.tier}).eq('id',id);
+  const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind,price_tier:f.tier,account_currency:f.currency||'SYP'}).eq('id',id);
   if(error)return toast(error.message);
   await refresh();toast('تم الحفظ ✓');partnerV(id)
 }
@@ -1656,7 +1657,7 @@ async function debtV(){
   <div id=dl></div>
   <div class=m style="margin-top:8px">الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>
   <details class=card id=npd><summary>${ic('plus',16)} زبون / مورد جديد</summary><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف" type=tel dir=ltr>
-  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><label class=fl>فئة سعر البيع الافتراضية للزبون</label><select id=atier><option value=retail>المفرق<option value=semi_wholesale>نصف الجملة<option value=wholesale>الجملة</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
+  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><label class=fl>فئة سعر البيع الافتراضية للزبون</label><select id=atier><option value=retail>المفرق<option value=semi_wholesale>نصف الجملة<option value=wholesale>الجملة</select><label class=fl>عملة الحساب الافتراضية</label><select id=acur>${curOptions('SYP')}</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
   debtList()
 }
 function debtList(){
@@ -1670,7 +1671,7 @@ function debtList(){
 }
 async function addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
-  const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value,price_tier:$('#atier').value||'retail'});
+  const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value,price_tier:$('#atier').value||'retail',account_currency:$('#acur').value||'SYP'});
   if(error)return toast(error.message);
   await refresh();debtV()
 }
