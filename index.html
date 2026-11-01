@@ -282,12 +282,18 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
 const uid=()=>crypto.randomUUID();
-let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{}};
+let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{},currencies:[]};
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
 const whHint=id=>S.whs.filter(w=>w.id!=S.wh&&lvl(id,w.id)>0).map(w=>w.name+' ('+fmt(lvl(id,w.id))+')').join('، ');
-const rate=c=>c==='USD'?+S.shop.usd_rate:1;
+const rate=c=>{if(c==='SYP')return 1;if(c==='USD')return +S.shop?.usd_rate||1;const x=(S.currencies||[]).find(v=>v.code===c);return +(x?.rate_to_syp)||1};
+const curRows=()=>{const a=(S.currencies||[]).filter(x=>x.is_active!==false);return a.length?a:[{code:'SYP',name:'ليرة سورية',rate_to_syp:1},{code:'USD',name:'دولار أمريكي',rate_to_syp:+S.shop?.usd_rate||1}]};
+const curOptions=(selected='SYP')=>curRows().map(c=>`<option value="${esc(c.code)}"${c.code===selected?' selected':''}>${esc(c.name)} (${esc(c.code)})</option>`).join('');
+const tierName=t=>({retail:'المفرق',semi_wholesale:'نصف الجملة',wholesale:'الجملة'}[t]||'المفرق');
+const tierPrice=(p,t)=>{const v=t==='wholesale'?p.wholesale_price:t==='semi_wholesale'?p.semi_wholesale_price:p.retail_price;return v==null||v===''?+p.sale_price||0:+v};
+const partnerTier=()=>{const p=S.parts.find(x=>x.id===(($('#pt')||{}).value||''));return p?.price_tier||'retail'};
+function applyPartnerTier(){if(S.mode!=='sale'||!S.cart.length)return;const t=partnerTier();S.cart.forEach(i=>{const p=S.prods.find(x=>x.id===i.id);if(!p)return;const c=p.sale_currency||'SYP',base=tierPrice(p,t)*rate(c);i.base=base;i.price=+(base/rate(S.cur)).toFixed(4)});cartV()}
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -467,7 +473,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','stock','mfg']],['المالية',['debt','acc','rep']],['الإدارة',['team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','stock','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -580,11 +586,14 @@ async function load(){
 }
 async function refresh(){
   const [a,b,c]=await Promise.all([
-    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name'),
+    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name'),
     db.from('partners').select('*').order('name'),
     db.from('shops').select('*').eq('id',S.shop.id).single()]);
   if(a.error||b.error)return;
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
+  const cr=await db.from('shop_currencies').select('*').eq('shop_id',S.shop.id).eq('is_active',true).order('code').then(r=>r,()=>({data:null,error:true}));
+  S.currencies=cr.data||[{code:'SYP',name:'ليرة سورية',rate_to_syp:1,is_active:true},{code:'USD',name:'دولار أمريكي',rate_to_syp:+S.shop.usd_rate||1,is_active:true}];
+  const usd=S.currencies.find(x=>x.code==='USD');if(usd)usd.rate_to_syp=+S.shop.usd_rate||usd.rate_to_syp;
   const cm={};
   if(can('costs')){const r=await db.rpc('product_costs',{p_shop:S.shop.id});(r.data||[]).forEach(x=>cm[x.id]=+x.avg_cost)}
   S.prods.forEach(p=>p.avg_cost=cm[p.id]||0);
@@ -609,12 +618,12 @@ function newShopView(){
 async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
   $('#app').innerHTML=`<header class=top><div class=brand><img src="icon-192.png" width=40 height=40 alt=""><div><b>${esc(S.shop.name)}</b><span class="m ${exp?'neg':''}">${exp?'انتهى الاشتراك':'الاشتراك حتى '+S.shop.subscription_until}</span></div></div>
-  <div class=hact>${S.role=='owner'?`<button class=rate onclick="setRate()" title="تعديل سعر الدولار">${ic('dollar',16)}<span dir=ltr>${fmt(S.shop.usd_rate)}</span></button>`:`<span class=rate title="سعر الدولار">${ic('dollar',16)}<span dir=ltr>${fmt(S.shop.usd_rate)}</span></span>`}
+  <div class=hact>${S.role=='owner'?`<button class=rate onclick="setRate()" title="إدارة العملات وأسعار الصرف">${ic('dollar',16)}<span dir=ltr>${fmt(S.shop.usd_rate)}</span></button>`:`<span class=rate title="سعر الدولار">${ic('dollar',16)}<span dir=ltr>${fmt(S.shop.usd_rate)}</span></span>`}
   <button class="ibtn thb" onclick="toggleTheme()"></button>
   <button class=ibtn onclick="logout()" title="خروج" aria-label="خروج">${ic('logout')}</button></div></header><div id=cs style="display:none"></div>
   <div class=lay><aside id=side aria-label="القائمة الرئيسية"><div class=side-h><b>القائمة</b><button class=ibtn onclick="drawer(0)" aria-label="إغلاق القائمة">${ic('x')}</button></div>
@@ -633,12 +642,41 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
-async function setRate(){
-  const v=await ask('سعر الدولار بالليرة',S.shop.usd_rate,{num:true,icon:'dollar',yes:'حفظ'});if(!v)return;
-  const r=await call('set_usd_rate',{p_shop:S.shop.id,p_rate:+v});
-  if(r!==undefined){await refresh();shell();toast('تم تحديث سعر الدولار')}
+async function setRate(){nav('curr')}
+async function currencyV(){
+  const {data,error}=await db.from('shop_currencies').select('*').eq('shop_id',S.shop.id).order('code');
+  if(!error&&data){S.currencies=data.filter(x=>x.is_active!==false);const u=S.currencies.find(x=>x.code==='USD');if(u)u.rate_to_syp=+S.shop.usd_rate||u.rate_to_syp}
+  const L=curRows();
+  $('#v').innerHTML=`<div class=card><div class=sec-h><b>${ic('dollar',18)} إدارة العملات وأسعار الصرف</b><button class="b s" onclick="currencyForm()">+ إضافة عملة</button></div>
+  <div class=m>سعر الصرف هنا هو قيمة وحدة العملة مقابل الليرة السورية. العملة الأساسية في الدفاتر ما زالت الليرة، وفواتير القبض والبيع الحالية تدعم الليرة والدولار.</div>
+  ${error?'<div class="note card bad">تعذّر تحميل جدول العملات. نفّذ ملف التحديث SQL المرفق أولاً.</div>':''}
+  ${L.map(c=>`<div class=it><span><b>${esc(c.name)}</b><br><span class=m>${esc(c.code)} · ${c.code==='SYP'?'عملة الأساس':c.code==='USD'?'تُحدّث من سعر الدولار أعلى النظام':'سعر الوحدة بالليرة'}</span></span><span style="text-align:end"><b>${fmt(c.code==='USD'?S.shop.usd_rate:c.rate_to_syp)}</b><br>${c.code==='SYP'?'<span class=m>ثابتة</span>':`<button class="b s" style="padding:5px 9px" onclick="currencyEdit('${esc(c.id||c.code)}')">تعديل</button> ${c.code==='USD'?'':`<button class="b s neg" style="padding:5px 9px" onclick="currencyDisable('${esc(c.id)}')">تعطيل</button>`}`}</span></div>`).join('')}
+  </div>`;
+}
+async function currencyForm(){
+  const f=await dlg({title:'إضافة عملة',icon:'dollar',yes:'إضافة',fields:[{k:'code',label:'رمز العملة (مثلاً EUR)',val:'',ltr:true},{k:'name',label:'اسم العملة'},{k:'rate',label:'سعر وحدة العملة بالليرة السورية',num:true}],check:v=>/^[A-Z]{3,5}$/.test(v.code.trim().toUpperCase())&&v.name.trim()&&+v.rate>0?'':'أدخل رمزاً من 3 إلى 5 أحرف واسم العملة وسعراً صحيحاً أكبر من صفر'});
+  if(!f)return;const code=f.code.trim().toUpperCase();
+  const {error}=await db.from('shop_currencies').insert({shop_id:S.shop.id,code,name:f.name.trim(),rate_to_syp:+f.rate,is_active:true});
+  if(error)return toast(error.code==='23505'?'رمز العملة موجود مسبقاً':error.message);
+  await refresh();currencyV();toast('تمت إضافة العملة ✓')
+}
+async function currencyDisable(id){
+  const c=(S.currencies||[]).find(x=>x.id===id);if(!c)return;
+  if(S.prods.some(p=>p.sale_currency===c.code))return toast('لا يمكن تعطيل هذه العملة لأنها مستخدمة في بطاقات مواد. غيّر عملة المواد أولاً.');
+  if(!await ok('تعطيل العملة '+c.code+'؟',{danger:true,yes:'تعطيل'}))return;
+  const {error}=await db.from('shop_currencies').update({is_active:false}).eq('id',id).eq('shop_id',S.shop.id);
+  if(error)return toast(error.message);await refresh();currencyV();toast('تم تعطيل العملة')
+}
+async function currencyEdit(id){
+  const c=(S.currencies||[]).find(x=>x.id===id||x.code===id);if(!c)return;
+  if(c.code==='SYP')return;
+  const f=await dlg({title:'تعديل '+c.name,icon:'dollar',yes:'حفظ',fields:[{k:'name',label:'اسم العملة',val:c.name},{k:'rate',label:'سعر وحدة العملة بالليرة السورية',num:true,val:c.code==='USD'?S.shop.usd_rate:c.rate_to_syp}] ,check:v=>v.name.trim()&&+v.rate>0?'':'أدخل اسماً وسعراً صحيحاً'});
+  if(!f)return;
+  if(c.code==='USD'){const r=await call('set_usd_rate',{p_shop:S.shop.id,p_rate:+f.rate});if(r===undefined)return;await refresh();shell();return toast('تم تحديث سعر الدولار ✓')}
+  const {error}=await db.from('shop_currencies').update({name:f.name.trim(),rate_to_syp:+f.rate}).eq('id',c.id).eq('shop_id',S.shop.id);
+  if(error)return toast(error.message);await refresh();currencyV();toast('تم التعديل ✓')
 }
 
 /* ---- فاتورة بيع / شراء ---- */
@@ -657,7 +695,7 @@ function inv(){
   <details id=opt ${S.optO?'open':''} ontoggle="S.optO=this.open" ${open?'style="display:none"':''}><summary><span>${sale?'الزبون والدفع':'المورد والدفع'}</span><span id=os class=m></span></summary>
   ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:''}
   <label class=fl for=cur>العملة</label><select id=cur onchange="setCur(this.value)"><option value=SYP>ليرة سورية (SYP)<option value=USD>دولار (USD)</select>
-  <label class=fl for=pt>${sale?'الزبون':'المورد'}</label><div class=row><select id=pt onchange="pmCh()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد" aria-label="إضافة ${sale?'زبون':'مورد'} جديد">${ic('plus',18)}</button></div>
+  <label class=fl for=pt>${sale?'الزبون':'المورد'}</label><div class=row><select id=pt onchange="pmCh();applyPartnerTier()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد" aria-label="إضافة ${sale?'زبون':'مورد'} جديد">${ic('plus',18)}</button></div>
   <label class=fl for=pm>طريقة الدفع</label><select id=pm onchange="pmCh()"><option value=cash>نقداً بالكامل<option value=credit>آجل (بدون دفعة)<option value=part>دفعة جزئية والباقي آجل</select>
   <input id=paid type=number inputmode=decimal dir=ltr placeholder="المبلغ المدفوع الآن" style="display:none">
   ${sale&&!S.edit?`<label class=m style="display:flex;gap:6px;align-items:center;margin:8px 0 0"><input type=checkbox id=ap style="width:auto;margin:0" ${localStorage.ap=='1'?'checked':''} onchange="localStorage.ap=this.checked?'1':'0'"> طباعة الوصل بعد البيع</label>`:''}
@@ -679,13 +717,13 @@ function pmCh(){
   $('#pt').style.borderColor=(pm!='cash'&&!$('#pt').value)?'var(--r)':'';optSum();chgV()
 }
 async function newPartner(){
-  const sale=S.mode=='sale',f=await dlg({title:sale?'زبون جديد':'مورد جديد',icon:'users',yes:'إضافة',fields:[{k:'n',label:'الاسم'},{k:'ph',label:'رقم الهاتف (اختياري)',tel:true}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
+  const sale=S.mode=='sale',f=await dlg({title:sale?'زبون جديد':'مورد جديد',icon:'users',yes:'إضافة',fields:[{k:'n',label:'الاسم'},{k:'ph',label:'رقم الهاتف (اختياري)',tel:true},{k:'tier',label:'فئة سعر البيع',val:'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'';
-  const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier'}).select('id').single();
+  const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier',price_tier:f.tier||'retail'}).select('id').single();
   if(error)return toast(error.message);
   const pmv=$('#pm').value,pv=$('#paid').value;
   await refresh();inv();
-  $('#pt').value=data.id;$('#pm').value=pmv;$('#paid').value=pv;pmCh()
+  $('#pt').value=data.id;$('#pm').value=pmv;$('#paid').value=pv;pmCh();applyPartnerTier()
 }
 const nAr=s=>String(s||'').toLowerCase().replace(/[أإآٱ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/[ًٌٍَُِّْـ]/g,'').trim();
 const FQ=()=>{try{return JSON.parse(localStorage['fq'+S.shop.id]||'{}')}catch(e){return{}}};
@@ -697,7 +735,7 @@ const hue=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))%360;retu
 let AC;function beep(good){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=good?'sine':'square';o.frequency.value=good?1320:200;g.gain.value=.05;o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+(good?.07:.22))}catch(e){}try{navigator.vibrate&&navigator.vibrate(good?15:[40,50,40])}catch(e){}}
 function tile(p){
   const st=lvl(p.id,S.wh),c=S.cart.find(x=>x.id==p.id),sale=S.mode=='sale';
-  const pr=sale?fmt(p.sale_price)+' <small>'+p.sale_currency+'</small>':(+p.avg_cost?fmt(p.avg_cost)+' <small>SYP</small>':'');
+  const pr=sale?fmt(tierPrice(p,partnerTier()))+' <small>'+p.sale_currency+'</small>':(+p.avg_cost?fmt(p.avg_cost)+' <small>SYP</small>':'');
   return `<button class="tile${c?' in':''}${S.pop==p.id?' pop':''}" data-id="${p.id}" onclick="add('${p.id}')" title="${esc(p.name)}">
   <span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span>${c?`<span class=qb>${fmt(c.qty)}</span>`:''}
   <span class=tn>${esc(p.name)}</span>${pr?`<span class=tp>${pr}</span>`:''}<span class="ts${st<=0?' neg':''}">${st<=0?'نفد من المستودع':'المخزون '+fmt(st)}</span></button>`}
@@ -725,7 +763,7 @@ function add(id,n=1){
   const p=S.prods.find(x=>x.id==id),c=S.cart.find(x=>x.id==id);if(!p)return;
   fqInc(id,1);S.pop=id;
   if(c){c.qty=+(c.qty+n).toFixed(3);return cartV()}
-  const base=S.mode=='sale'?p.sale_price*rate(p.sale_currency):+p.avg_cost;
+  const base=S.mode=='sale'?tierPrice(p,partnerTier())*rate(p.sale_currency||'SYP'):+p.avg_cost;
   S.cart.push({id,name:p.name,qty:n,base,price:+(base/rate(S.cur)).toFixed(4)});cartV()
 }
 function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base/rate(c)).toFixed(4));cartV()}
@@ -862,13 +900,42 @@ async function offsetP(id,max){
 }
 async function editPartner(id){
   const p=S.parts.find(x=>x.id==id);
-  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
+  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'',k=f.k;
   if(!k||!['1','2','3'].includes(k.trim()))return;
   const kind={1:'customer',2:'supplier',3:'both'}[k.trim()];
-  const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind}).eq('id',id);
+  const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind,price_tier:f.tier}).eq('id',id);
   if(error)return toast(error.message);
   await refresh();toast('تم الحفظ ✓');partnerV(id)
+}
+
+
+/* ---- المفكرة والمهام ---- */
+async function memoV(){
+  const {data,error}=await db.from('shop_notes').select('*').eq('shop_id',S.shop.id).order('is_done').order('due_date',{ascending:true}).order('created_at',{ascending:false});
+  if(error){$('#v').innerHTML=`<div class=card><b>المفكرة</b><div class="note bad card">تعذّر تحميل المفكرة. نفّذ ملف التحديث SQL المرفق أولاً.<br>${esc(error.message)}</div></div>`;return}
+  S.notes=data||[];
+  $('#v').innerHTML=`<div class=card><div class=sec-h><b>${ic('memo',18)} مفكرتي ومهامي</b><button class=b onclick="memoForm()">+ ملاحظة</button></div>
+  <div class=m>سجّل الملاحظات والتذكيرات ومواعيد المتابعة. كل مستخدم يرى ملاحظاته الخاصة ضمن المحل.</div>
+  ${S.notes.length?S.notes.map(n=>`<div class=it style="align-items:flex-start;gap:12px"><label style="display:flex;align-items:flex-start;gap:8px;flex:1;margin:0"><input type=checkbox ${n.is_done?'checked':''} onchange="memoToggle('${n.id}',this.checked)" style="margin-top:6px"><span style="min-width:0"><b style="${n.is_done?'text-decoration:line-through;color:var(--m)':''}">${esc(n.title)}</b>${n.body?`<div class=m style="white-space:pre-wrap">${esc(n.body)}</div>`:''}<span class=m>${n.due_date?'موعد: '+esc(n.due_date)+' · ':''}${n.is_done?'منجزة':'قيد المتابعة'}</span></span></label><span style="display:flex;gap:5px"><button class="b s" style="padding:5px 8px" onclick="memoForm('${n.id}')">تعديل</button><button class="b s neg" style="padding:5px 8px" onclick="memoDelete('${n.id}')">حذف</button></span></div>`).join(''):'<div class=empty>المفكرة فارغة. أضف أول ملاحظة أو مهمة.</div>'}
+  </div>`
+}
+async function memoForm(id){
+  const n=(S.notes||[]).find(x=>x.id===id)||{};
+  const f=await dlg({title:id?'تعديل ملاحظة':'ملاحظة جديدة',icon:'memo',yes:'حفظ',fields:[{k:'title',label:'العنوان',val:n.title||''},{k:'body',label:'التفاصيل',area:true,rows:5,val:n.body||''},{k:'due',label:'تاريخ التذكير (اختياري)',val:n.due_date||''}],check:v=>v.title.trim()?'':'اكتب عنوان الملاحظة'});
+  if(!f)return;
+  const payload={shop_id:S.shop.id,user_id:(await db.auth.getUser()).data.user.id,title:f.title.trim(),body:f.body.trim()||null,due_date:f.due||null};
+  const q=id?db.from('shop_notes').update(payload).eq('id',id).eq('shop_id',S.shop.id):db.from('shop_notes').insert(payload);
+  const {error}=await q;if(error)return toast(error.message);memoV();toast('تم حفظ الملاحظة ✓')
+}
+async function memoToggle(id,done){
+  const {error}=await db.from('shop_notes').update({is_done:!!done}).eq('id',id).eq('shop_id',S.shop.id);
+  if(error)return toast(error.message);memoV()
+}
+async function memoDelete(id){
+  if(!await ok('حذف هذه الملاحظة؟',{danger:true,icon:'trash',yes:'حذف'}))return;
+  const {error}=await db.from('shop_notes').delete().eq('id',id).eq('shop_id',S.shop.id);
+  if(error)return toast(error.message);memoV();toast('تم الحذف')
 }
 
 /* ---- الحسابات وكشوفها ---- */
@@ -1165,12 +1232,12 @@ async function rcpSave(){
 
 /* ---- حالة الاتصال والعمل بدون إنترنت ---- */
 function saveCache(){
-  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,perms:S.perms,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,wh:S.wh,t:Date.now()})}catch(e){}
+  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,perms:S.perms,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,currencies:S.currencies,wh:S.wh,t:Date.now()})}catch(e){}
 }
 function useCacheOk(){
   let c=null;try{c=JSON.parse(localStorage.cache||'null')}catch(e){}
   if(!c||!c.shop)return false;
-  S.shop=c.shop;S.role=c.role;S.perms=c.perms||['sell'];S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
+  S.shop=c.shop;S.role=c.role;S.perms=c.perms||['sell'];S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.currencies=c.currencies||[];S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
   shell();toast('تعمل الآن بدون اتصال على آخر بيانات محفوظة');return true
 }
 function pqUpdate(){
@@ -1450,32 +1517,36 @@ function printObj(x){
 /* ---- المنتجات ---- */
 function prodV(){
   const ow=can('products'),cs=can('costs');
-  $('#v').innerHTML=`${ow?`<div class=card><b>منتج جديد</b><input id=pn placeholder="الاسم"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
-  <div class=row><input id=pp type=number inputmode=decimal placeholder="سعر البيع"><select id=pc><option>SYP<option>USD</select></div>
-  <input id=pm type=number inputmode=decimal placeholder="حد التنبيه للمخزون"><button class=b onclick="addProd()">حفظ</button></div>`:''}
-  <div class=card>${S.prods.map(p=>`<div class=it ${ow?`onclick="editP('${p.id}')"`:''}><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)}${cs?' · متوسط التكلفة '+fmt(p.avg_cost):''}</span></span><b>${fmt(p.sale_price)} ${p.sale_currency}</b></div>`).join('')||'<div class=m>لا منتجات بعد. المخزون يبدأ بفاتورة شراء.</div>'}
-  <div class=m>اضغط على المنتج لتعديله أو حذفه</div></div>`
+  $('#v').innerHTML=`${ow?`<div class=card><b>مادة جديدة</b><input id=pn placeholder="اسم المادة"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
+  <label class=fl>عملة أسعار المادة</label><select id=pc>${curOptions('SYP')}</select>
+  <div class=row><div><label class=fl>سعر المفرق</label><input id=pp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>سعر نصف الجملة</label><input id=psp type=number inputmode=decimal placeholder="0"></div></div>
+  <div class=row><div><label class=fl>سعر الجملة</label><input id=pwp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=pm type=number inputmode=decimal placeholder="0"></div></div>
+  <button class=b onclick="addProd()">حفظ المادة</button></div>`:''}
+  <div class=card>${S.prods.map(p=>`<div class=it ${ow?`onclick="editP('${p.id}')"`:''}><span>${esc(p.name)}<br><span class="m ${p.stock_qty<=p.min_stock?'neg':''}">المخزون ${fmt(p.stock_qty)}${cs?' · متوسط التكلفة '+fmt(p.avg_cost):''}</span></span><span style="text-align:end"><b>${fmt(tierPrice(p,'retail'))} ${esc(p.sale_currency||'SYP')}</b><br><span class=m>نصف الجملة ${fmt(tierPrice(p,'semi_wholesale'))} · الجملة ${fmt(tierPrice(p,'wholesale'))}</span></span></div>`).join('')||'<div class=m>لا مواد بعد. المخزون يبدأ بفاتورة شراء.</div>'}
+  <div class=m>اضغط على المادة لتعديلها أو حذفها. الأسعار الثلاثة بعملة المادة المحددة.</div></div>`
 }
 const dupMsg=e=>e.code=='23505'?'هذا الباركود مسجّل لمنتج آخر':e.message;
 async function addProd(){
   const n=$('#pn').value.trim();if(!n)return toast('الاسم مطلوب');
   if(S.prods.some(p=>p.name==n)&&!await ok('يوجد منتج بنفس الاسم',{msg:'هل تريد إضافة منتج آخر بنفس الاسم؟',icon:'alert',yes:'إضافة'}))return;
-  const {error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,sale_price:+$('#pp').value||0,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0});
+  if($('#pp').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#pp').value,semi=$('#psp').value.trim()===''?null:+$('#psp').value,whole=$('#pwp').value.trim()===''?null:+$('#pwp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
+  const {error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0});
   if(error)return toast(dupMsg(error));
   await refresh();prodV()
 }
 function editP(id){
   const p=S.prods.find(x=>x.id==id);
-  $('#v').innerHTML=`<div class=card><b>تعديل منتج</b><input id=en value="${esc(p.name)}"><div class=row><input id=eb value="${esc(p.barcode||'')}" placeholder="الباركود"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('eb')">📷</button></div>
-  <div class=row><input id=ep type=number inputmode=decimal value="${p.sale_price}"><select id=ec><option>SYP<option>USD</select></div>
-  <input id=ei type=number inputmode=decimal value="${p.min_stock}" placeholder="حد التنبيه للمخزون">
+  $('#v').innerHTML=`<div class=card><b>تعديل المادة</b><input id=en value="${esc(p.name)}"><div class=row><input id=eb value="${esc(p.barcode||'')}" placeholder="الباركود"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('eb')">📷</button></div>
+  <label class=fl>عملة أسعار المادة</label><select id=ec>${curOptions(p.sale_currency||'SYP')}</select>
+  <div class=row><div><label class=fl>سعر المفرق</label><input id=ep type=number inputmode=decimal value="${tierPrice(p,'retail')}"></div><div><label class=fl>سعر نصف الجملة</label><input id=esp type=number inputmode=decimal value="${tierPrice(p,'semi_wholesale')}"></div></div>
+  <div class=row><div><label class=fl>سعر الجملة</label><input id=ewp type=number inputmode=decimal value="${tierPrice(p,'wholesale')}"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=ei type=number inputmode=decimal value="${p.min_stock}" placeholder="حد التنبيه"></div></div>
   <div class=row><button class=b onclick="saveP('${p.id}')">حفظ</button><button class="b s" onclick="prodV()">رجوع</button></div>
-  <button class="b s neg" style="width:100%;margin-top:8px" onclick="delP('${p.id}')">حذف المنتج</button></div>`;
-  $('#ec').value=p.sale_currency
+  <button class="b s neg" style="width:100%;margin-top:8px" onclick="delP('${p.id}')">حذف المادة</button></div>`
 }
 async function saveP(id){
   const n=$('#en').value.trim();if(!n)return toast('الاسم مطلوب');
-  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:+$('#ep').value||0,sale_currency:$('#ec').value,min_stock:+$('#ei').value||0}).eq('id',id);
+  if($('#ep').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#ep').value,semi=$('#esp').value.trim()===''?null:+$('#esp').value,whole=$('#ewp').value.trim()===''?null:+$('#ewp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
+  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,min_stock:+$('#ei').value||0}).eq('id',id);
   if(error)return toast(dupMsg(error));
   await refresh();prodV();toast('تم الحفظ ✓')
 }
@@ -1585,7 +1656,7 @@ async function debtV(){
   <div id=dl></div>
   <div class=m style="margin-top:8px">الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>
   <details class=card id=npd><summary>${ic('plus',16)} زبون / مورد جديد</summary><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف" type=tel dir=ltr>
-  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
+  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><label class=fl>فئة سعر البيع الافتراضية للزبون</label><select id=atier><option value=retail>المفرق<option value=semi_wholesale>نصف الجملة<option value=wholesale>الجملة</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
   debtList()
 }
 function debtList(){
@@ -1599,7 +1670,7 @@ function debtList(){
 }
 async function addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
-  const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value});
+  const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value,price_tier:$('#atier').value||'retail'});
   if(error)return toast(error.message);
   await refresh();debtV()
 }
