@@ -575,7 +575,7 @@ async function load(){
   const m=await db.from('shop_members').select('role,warehouse_id,perms').eq('shop_id',S.shop.id).eq('user_id',user.id).single();
   S.role=(m.data||{}).role||'cashier';S.fixedWh=(m.data||{}).warehouse_id||null;S.perms=(m.data||{}).perms||['sell'];
   S.cached=false;
-  await refresh();flush();shell();
+  await refresh();flush();shell();rlLoad(true);
   if(S.role=='owner')autoBackup()
 }
 async function refresh(){
@@ -1492,8 +1492,44 @@ const KL=k=>k=='customer'?'زبون':k=='supplier'?'مورد':'زبون ومور
 
 /* ---- تذكير الديون عبر واتساب ---- */
 const WAT0='مرحباً {الاسم}،\nنودّ تذكيركم بأن الرصيد المستحق عليكم لدى {المحل} هو {المبلغ} حتى تاريخ {التاريخ}.\nنرجو التكرّم بتسديده في أقرب وقت، وشكراً لتعاملكم معنا.\n{هاتف_المحل}';
-const watGet=()=>localStorage['wat'+S.shop.id]||WAT0;
-const RL=()=>{try{return JSON.parse(localStorage['rl'+S.shop.id]||'{}')}catch(e){return{}}};
+const watGet=()=>S.shop.wa_template||localStorage['wat'+S.shop.id]||WAT0;
+const jget=(k,d)=>{try{return JSON.parse(localStorage[k]||'')}catch(e){return d}};
+const RL=()=>S.rl||(S.rl=jget('rl'+S.shop.id,{}));
+const rlQ=()=>jget('rlq'+S.shop.id,[]);
+let RLF=false,RLT=0;
+/* يجلب آخر تذكير لكل زبون من الخادم (مشترك بين كل الأجهزة) */
+async function rlLoad(force){
+  if(!S.shop||!navigator.onLine||(!force&&Date.now()-RLT<30e3))return;RLT=Date.now();
+  const sid=S.shop.id,since=new Date(Date.now()-365*864e5).toISOString();
+  const {data,error}=await db.from('debt_reminders').select('partner_id,sent_at').eq('shop_id',sid).gte('sent_at',since).order('sent_at',{ascending:false}).limit(10000).then(r=>r,e=>({error:e}));
+  if(!S.shop||S.shop.id!==sid)return;
+  if(error){S.rlOff=true;return}
+  S.rlOff=false;
+  const m={},up=(p,t)=>{if(!m[p]||m[p]<t)m[p]=t};
+  (data||[]).forEach(x=>up(x.partner_id,+new Date(x.sent_at)));
+  /* ترحيل التذكيرات القديمة المحفوظة على هذا الجهاز مرة واحدة */
+  if(!localStorage['rlmig'+sid]){const old=jget('rl'+sid,{}),q=rlQ();
+    Object.entries(old).forEach(([p,t])=>{if(!(m[p]>=t)&&S.parts.some(x=>x.id==p))q.push({p,t})});
+    localStorage['rlq'+sid]=JSON.stringify(q);localStorage['rlmig'+sid]=1}
+  rlQ().forEach(x=>up(x.p,x.t));
+  S.rl=m;try{localStorage['rl'+sid]=JSON.stringify(m)}catch(e){}
+  rlPaint();rlFlush();
+  /* ترحيل نص الرسالة المحفوظ محلياً إلى المحل */
+  const lt=localStorage['wat'+sid];
+  if(lt&&S.role=='owner'&&'wa_template' in S.shop&&!S.shop.wa_template){const r=await db.rpc('set_wa_template',{p_shop:sid,p_text:lt}).then(r=>r,e=>({error:e}));if(!r.error){S.shop.wa_template=lt;localStorage.removeItem('wat'+sid)}}
+}
+/* يرسل التذكيرات المعلّقة (تُحفظ محلياً إن لم يتوفر اتصال) */
+async function rlFlush(){
+  if(RLF||!S.shop||!navigator.onLine)return;const sid=S.shop.id,q=rlQ();if(!q.length)return;
+  RLF=true;
+  try{const {error}=await db.from('debt_reminders').insert(q.map(x=>({shop_id:sid,partner_id:x.p,sent_at:new Date(x.t).toISOString(),amount:x.a??null}))).then(r=>r,e=>({error:e}));
+    if(!error){const n=rlQ().slice(q.length);localStorage['rlq'+sid]=JSON.stringify(n);S.rlOff=false}
+    else{S.rlOff=true;if(!bad(error)&&!/42P01|PGRST20/.test(error.code||'')&&!/schema cache|does not exist/i.test(error.message||'')){localStorage['rlq'+sid]='[]';toast('رفض الخادم حفظ التذكير: '+error.message)}}
+  }finally{RLF=false}
+}
+function rlPaint(){document.querySelectorAll('[data-rl]').forEach(e=>{const t=rlTxt(e.dataset.rl);if(t){e.textContent=t;e.classList.add('sent')}})}
+addEventListener('online',()=>{rlFlush();rlLoad(true)});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible')rlLoad()});
 const rlTxt=id=>{const t=RL()[id];if(!t)return '';const d=Math.floor((new Date(new Date().toDateString())-new Date(new Date(t).toDateString()))/864e5);return 'ذُكّر '+(d<=0?'اليوم':d==1?'أمس':d==2?'قبل يومين':d<=10?'قبل '+d+' أيام':'قبل '+d+' يوماً')};
 const phOk=ph=>waNum(ph).length>=10;
 function waMsg(p,r,usd){
@@ -1515,12 +1551,16 @@ async function remind(id){
     db.from('partners').update({phone:ph}).eq('id',id).then(({error})=>{if(error)toast('لم يُحفظ الرقم: '+error.message)})}
   const url='https://wa.me/'+waNum(ph)+'?text='+encodeURIComponent(waMsg(p,b.r,b.usd));
   const w=open(url,'_blank');if(!w)location.href=url;
-  const L=RL();L[id]=Date.now();try{localStorage['rl'+S.shop.id]=JSON.stringify(L)}catch(e){}
+  const now=Date.now(),L=RL();L[id]=now;try{localStorage['rl'+S.shop.id]=JSON.stringify(L)}catch(e){}
+  const q=rlQ();q.push({p:id,t:now,a:b.r});localStorage['rlq'+S.shop.id]=JSON.stringify(q);rlFlush();
   document.querySelectorAll(`[data-rl="${id}"]`).forEach(e=>{e.textContent=rlTxt(id);e.classList.add('sent')});
 }
 async function watEdit(){
   const f=await dlg({title:'نص رسالة التذكير',icon:'wa',yes:'حفظ',msg:'الكلمات بين القوسين تُستبدل تلقائياً:\n{الاسم} · {المبلغ} · {المحل} · {التاريخ} · {هاتف_المحل}\nاترك النص فارغاً للعودة للنص الافتراضي.',fields:[{k:'t',area:true,val:watGet()}],check:v=>!v.t.trim()||v.t.includes('{المبلغ}')?'':'يجب أن يحتوي النص على {المبلغ}'});
-  if(!f)return;const t=f.t.trim();if(!t||t==WAT0)localStorage.removeItem('wat'+S.shop.id);else localStorage['wat'+S.shop.id]=t;toast('تم حفظ نص الرسالة ✓')}
+  if(!f)return;let t=f.t.trim();if(t==WAT0)t='';
+  const r=await call('set_wa_template',{p_shop:S.shop.id,p_text:t});
+  if(!r)return;
+  S.shop.wa_template=t||null;localStorage.removeItem('wat'+S.shop.id);toast('تم حفظ نص الرسالة لكل الموظفين ✓')}
 function remindAll(){
   const L=(S.debtD||[]).filter(p=>+p.receivable>0).sort((a,b)=>b.receivable-a.receivable);
   if(!L.length)return toast('لا يوجد زبائن عليهم ديون');
@@ -1531,7 +1571,7 @@ const waBtn=id=>`<button class=wab onclick="event.stopPropagation();remind('${id
 
 async function debtV(){
   const t0=S.tab;$('#v').innerHTML=`<div class=card>${skl(6)}</div>`;
-  const [{data,error},cb]=await Promise.all([db.from('partner_balances').select('*').order('name'),db.from('partner_cur_balances').select('*').then(r=>r.data||[],()=>[])]);
+  const [{data,error},cb]=await Promise.all([db.from('partner_balances').select('*').order('name'),db.from('partner_cur_balances').select('*').then(r=>r.data||[],()=>[]),rlLoad(true)]);
   if(S.tab!==t0)return;
   if(error&&!data){$('#v').innerHTML=`<div class="card empty">تعذّر تحميل الديون. ${navigator.onLine?esc(error.message):'لا يوجد اتصال بالإنترنت.'}</div>`;return}
   S.debtD=data||[];S.balc={};S.debtD.forEach(p=>S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:0});(cb||[]).forEach(c=>{if(S.balc[c.partner_id])S.balc[c.partner_id].usd=+c.rec_usd||0});
@@ -1541,7 +1581,7 @@ async function debtV(){
   <div class=card>
   <div class=sbar>${ic('search',18)}<input id=dq type=search placeholder="ابحث بالاسم أو الهاتف" oninput="debtList()" autocomplete=off aria-label="بحث"></div>
   <div class=chips>${[['all','الكل ('+D.length+')'],['rc','عليهم ديون ('+rc.length+')'],['py','لهم علينا ('+py.length+')']].map(([k,l])=>`<button class="fc${S.dF==k?' on':''}" onclick="S.dF='${k}';document.querySelectorAll('.fc').forEach(b=>b.classList.toggle('on',b==this));debtList()">${l}</button>`).join('')}</div>
-  ${rc.length?`<div class=row style="margin:4px 0 2px"><button class="b wa" onclick="remindAll()">${ic('wa',18)} تذكير المدينين</button><button class="b s" style="flex:0;white-space:nowrap" onclick="watEdit()">نص الرسالة</button></div>`:''}
+  ${rc.length?`<div class=row style="margin:4px 0 2px"><button class="b wa" onclick="remindAll()">${ic('wa',18)} تذكير المدينين</button>${S.role=='owner'?`<button class="b s" style="flex:0;white-space:nowrap" onclick="watEdit()">نص الرسالة</button>`:''}</div>`:''}
   <div id=dl></div>
   <div class=m style="margin-top:8px">الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>
   <details class=card id=npd><summary>${ic('plus',16)} زبون / مورد جديد</summary><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف" type=tel dir=ltr>
@@ -1896,4 +1936,4 @@ boot();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
-</html>
+</html>0
