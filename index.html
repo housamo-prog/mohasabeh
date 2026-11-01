@@ -282,7 +282,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
 const uid=()=>crypto.randomUUID();
-let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{},currencies:[]};
+let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{},currencies:[],supplierPrices:[]};
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
 const whHint=id=>S.whs.filter(w=>w.id!=S.wh&&lvl(id,w.id)>0).map(w=>w.name+' ('+fmt(lvl(id,w.id))+')').join('، ');
 const rate=c=>{if(c==='SYP')return 1;if(c==='USD')return +S.shop?.usd_rate||1;const x=(S.currencies||[]).find(v=>v.code===c);return +(x?.rate_to_syp)||1};
@@ -292,7 +292,22 @@ const curDlgOptions=()=>curRows().map(c=>[c.code,`${c.name} (${c.code})`]);
 const tierName=t=>({retail:'المفرق',semi_wholesale:'نصف الجملة',wholesale:'الجملة'}[t]||'المفرق');
 const tierPrice=(p,t)=>{const v=t==='wholesale'?p.wholesale_price:t==='semi_wholesale'?p.semi_wholesale_price:p.retail_price;return v==null||v===''?+p.sale_price||0:+v};
 const partnerTier=()=>{const p=S.parts.find(x=>x.id===(($('#pt')||{}).value||''));return p?.price_tier||'retail'};
-function applyPartnerTier(){if(S.mode!=='sale'||!S.cart.length)return;const t=partnerTier();S.cart.forEach(i=>{const p=S.prods.find(x=>x.id===i.id);if(!p)return;const c=p.sale_currency||'SYP',base=tierPrice(p,t)*rate(c);i.base=base;i.price=+(base/rate(S.cur)).toFixed(4)});cartV()}
+function supplierPrice(partnerId,productId){return S.supplierPrices.find(x=>x.partner_id===partnerId&&x.product_id===productId)||null}
+function recalcCartPrices(){
+  const partner=$('#pt')?.value||'',target=S.cur;
+  S.cart.forEach(i=>{const p=S.prods.find(x=>x.id===i.id);if(!p)return;let base;
+    if(S.mode==='sale')base=tierPrice(p,partnerTier())*rate(p.sale_currency||'SYP');
+    else {const sp=supplierPrice(partner,p.id);base=sp?(+sp.unit_price||0)*rate(sp.currency||'SYP'):+p.avg_cost||0;}
+    i.base=base;i.price=+(base/rate(target)).toFixed(4);
+  });cartV()
+}
+function applyPartnerTier(){if(!S.cart.length)return;recalcCartPrices()}
+async function partnerChanged(){
+  const p=S.parts.find(x=>x.id===$('#pt')?.value),target=p?.account_currency||'SYP';
+  if(target!==S.cur){S.cur=target;if($('#cur'))$('#cur').value=target;}
+  recalcCartPrices();pmCh();
+  if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
+}
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
 const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
@@ -695,8 +710,8 @@ function inv(){
   <div id=chgr class=chgr style="display:none"><input id=rcvd inputmode=decimal dir=ltr placeholder="المبلغ المستلم من الزبون" oninput="chgV()" aria-label="المبلغ المستلم"><div id=chg></div></div>
   <details id=opt ${S.optO?'open':''} ontoggle="S.optO=this.open" ${open?'style="display:none"':''}><summary><span>${sale?'الزبون والدفع':'المورد والدفع'}</span><span id=os class=m></span></summary>
   ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:''}
-  <label class=fl for=cur>العملة</label><select id=cur onchange="setCur(this.value)"><option value=SYP>ليرة سورية (SYP)<option value=USD>دولار (USD)</select>
-  <label class=fl for=pt>${sale?'الزبون':'المورد'}</label><div class=row><select id=pt onchange="pmCh();applyPartnerTier()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد" aria-label="إضافة ${sale?'زبون':'مورد'} جديد">${ic('plus',18)}</button></div>
+  <label class=fl for=cur>العملة</label><select id=cur onchange="setCur(this.value)">${curOptions(S.cur)}</select>
+  <label class=fl for=pt>${sale?'الزبون':'المورد'}</label><div class=row><select id=pt onchange="partnerChanged()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد" aria-label="إضافة ${sale?'زبون':'مورد'} جديد">${ic('plus',18)}</button></div>
   <label class=fl for=pm>طريقة الدفع</label><select id=pm onchange="pmCh()"><option value=cash>نقداً بالكامل<option value=credit>آجل (بدون دفعة)<option value=part>دفعة جزئية والباقي آجل</select>
   <input id=paid type=number inputmode=decimal dir=ltr placeholder="المبلغ المدفوع الآن" style="display:none">
   ${sale&&!S.edit?`<label class=m style="display:flex;gap:6px;align-items:center;margin:8px 0 0"><input type=checkbox id=ap style="width:auto;margin:0" ${localStorage.ap=='1'?'checked':''} onchange="localStorage.ap=this.checked?'1':'0'"> طباعة الوصل بعد البيع</label>`:''}
@@ -706,7 +721,7 @@ function inv(){
   </div></div></div>`;
   $('#cur').value=S.cur;cartV();srch();
   if(S.edit){
-    $('#pt').value=S.edit.partner||'';const e0=S.edit;$('#pm').value=+e0.paid>=+e0.total-0.005?'cash':(+e0.paid<=0?'credit':'part');if($('#pm').value=='part')$('#paid').value=e0.paid;$('#opt').open=true;pmCh();
+    $('#pt').value=S.edit.partner||'';if($('#pt').value){const ep=S.parts.find(x=>x.id===$('#pt').value);if(ep?.account_currency){S.cur=ep.account_currency;$('#cur').value=S.cur;}}const e0=S.edit;$('#pm').value=+e0.paid>=+e0.total-0.005?'cash':(+e0.paid<=0?'credit':'part');if($('#pm').value=='part')$('#paid').value=e0.paid;$('#opt').open=true;pmCh();
     $('#v').insertAdjacentHTML('afterbegin',`<div class=card style="border-color:var(--p)"><b>تعديل فاتورة</b><div class=m>تُلغى الفاتورة القديمة وتُسجَّل هذه بدلاً منها بنفس التاريخ. عدّل البنود ثم اضغط التسجيل.</div><button class="b s" style="margin-top:6px" onclick="S.edit=null;S.cart=[];go('hist')">إلغاء التعديل</button></div>`)
   }
   pmCh();
@@ -724,7 +739,7 @@ async function newPartner(){
   if(error)return toast(error.message);
   const pmv=$('#pm').value,pv=$('#paid').value;
   await refresh();inv();
-  $('#pt').value=data.id;$('#pm').value=pmv;$('#paid').value=pv;pmCh();applyPartnerTier()
+  $('#pt').value=data.id;$('#pm').value=pmv;$('#paid').value=pv;partnerChanged()
 }
 const nAr=s=>String(s||'').toLowerCase().replace(/[أإآٱ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/[ًٌٍَُِّْـ]/g,'').trim();
 const FQ=()=>{try{return JSON.parse(localStorage['fq'+S.shop.id]||'{}')}catch(e){return{}}};
@@ -764,7 +779,8 @@ function add(id,n=1){
   const p=S.prods.find(x=>x.id==id),c=S.cart.find(x=>x.id==id);if(!p)return;
   fqInc(id,1);S.pop=id;
   if(c){c.qty=+(c.qty+n).toFixed(3);return cartV()}
-  const base=S.mode=='sale'?tierPrice(p,partnerTier())*rate(p.sale_currency||'SYP'):+p.avg_cost;
+  let base;if(S.mode==='sale')base=tierPrice(p,partnerTier())*rate(p.sale_currency||'SYP');
+  else{const sp=supplierPrice($('#pt')?.value||'',p.id);base=sp?(+sp.unit_price||0)*rate(sp.currency||'SYP'):+p.avg_cost||0;}
   S.cart.push({id,name:p.name,qty:n,base,price:+(base/rate(S.cur)).toFixed(4)});cartV()
 }
 function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base/rate(c)).toFixed(4));cartV()}
@@ -881,10 +897,34 @@ async function partnerV(id){
   ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}${cl}
   ${c&&r>0?`<button class="b wa" style="width:100%;margin:8px 0" onclick="remind('${id}')">${ic('wa',18)} تذكير عبر واتساب</button><div class="m rl" data-rl="${id}" style="text-align:center;margin:-4px 0 8px">${rlTxt(id)}</div>`:''}
   <div class=row>${c?`<button class=b onclick="rcvGo('${id}','receipt')">سند قبض</button>`:''}${sp?`<button class=b onclick="rcvGo('${id}','payment')">سند دفع</button>`:''}</div>
-  <div class=row style="margin-top:8px"><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
+  <div class=row style="margin-top:8px">${sp?`<button class="b s" onclick="supplierPricesV('${id}')">أسعار الشراء</button>`:''}<button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="debtV()">رجوع</button></div><div class=card id=stm></div>`;
   stmtCard({partner:id,nat:p.kind!='supplier',title:'كشف حساب '+KL(p.kind)+' '+p.name+(p.kind=='both'?' (الرصيد الصافي: موجب = لنا عليه، سالب = له علينا)':'')})
 }
+
+async function supplierPricesV(id){
+  const p=S.parts.find(x=>x.id===id);if(!p)return;
+  const {data,error}=await db.from('supplier_product_prices').select('id,product_id,currency,unit_price,products(name)').eq('shop_id',S.shop.id).eq('partner_id',id).order('created_at',{ascending:false});
+  if(error)return toast('تعذر تحميل أسعار المورد: '+error.message);
+  const rows=data||[];
+  $('#v').innerHTML=`<div class=card><b>أسعار الشراء الخاصة بالمورد: ${esc(p.name)}</b><div class=m>أدخل سعر كل مادة كما يبيعه هذا المورد، وحدد عملة السعر. سيحوّل البرنامج السعر تلقائياً إلى عملة حساب المورد عند إنشاء فاتورة الشراء.</div>
+  <button class=b style="width:100%;margin:10px 0" onclick="supplierPriceAdd('${id}')">+ إضافة / تعديل سعر مادة</button>
+  ${rows.map(x=>`<div class=it><span>${esc(x.products?.name||'مادة')}<br><span class=m>${fmt(x.unit_price)} ${esc(x.currency)}</span></span><button class="b s" onclick="supplierPriceEdit('${id}','${x.id}')">تعديل</button></div>`).join('')||'<div class=empty>لا توجد أسعار خاصة لهذا المورد بعد</div>'}
+  <button class="b s" style="width:100%;margin-top:8px" onclick="partnerV('${id}')">رجوع</button></div>`
+}
+async function supplierPriceAdd(id,oldId){
+  const old=oldId?(S.supplierPriceRows||[]).find(x=>x.id===oldId):null;
+  const opts=S.prods.map(x=>[x.id,x.name]);
+  const f=await dlg({title:old?'تعديل سعر شراء':'سعر شراء جديد',icon:'buy',yes:'حفظ',fields:[{k:'product',label:'المادة',val:old?.product_id||'',opts},{k:'price',label:'سعر الشراء',num:true,val:old?.unit_price||''},{k:'currency',label:'عملة السعر',val:old?.currency||'SYP',opts:curDlgOptions()}],check:v=>v.product&&+v.price>0?'':'اختر المادة وأدخل سعراً صحيحاً'});if(!f)return;
+  const payload={shop_id:S.shop.id,partner_id:id,product_id:f.product,unit_price:+f.price,currency:f.currency||'SYP'};
+  const q=old?db.from('supplier_product_prices').update(payload).eq('id',old.id):db.from('supplier_product_prices').upsert(payload,{onConflict:'shop_id,partner_id,product_id'});
+  const {error}=await q;if(error)return toast(error.message);supplierPricesV(id);toast('تم حفظ سعر المورد ✓')
+}
+async function supplierPriceEdit(id,rowId){
+  const {data,error}=await db.from('supplier_product_prices').select('id,product_id,currency,unit_price').eq('id',rowId).single();if(error)return toast(error.message);
+  S.supplierPriceRows=[data];await supplierPriceAdd(id,rowId)
+}
+
 async function openBal(id){
   const p=S.parts.find(x=>x.id==id);let side=p.kind;
   if(side=='both'){side=await dlg({title:'نوع الرصيد الافتتاحي',msg:'هذا الطرف زبون ومورد معاً.',icon:'users',choices:[['customer','رصيد لنا عليه (كزبون)'],['supplier','رصيد له علينا (كمورد)']]});if(!side)return}
