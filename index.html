@@ -246,6 +246,24 @@ body.home #cb{display:none!important}
  .pgrid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
  .chk{position:sticky;bottom:-12px;background:var(--c);padding:10px 0 2px;border-top:1px solid var(--b)}
 }
+
+/* الديون وواتساب */
+button.b.wa{background:#1fa855;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+button.b.wa:hover{background:#178a45}
+.wab{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:11px;border:1px solid rgba(31,168,85,.3);background:rgba(31,168,85,.1);color:#1fa855;cursor:pointer;flex:none;transition:background .15s}
+.wab:hover{background:rgba(31,168,85,.2)}
+.dr{display:flex;align-items:center;gap:10px}
+.dn{display:flex;align-items:center;gap:10px;min-width:0}.dn .av{flex:none;margin:0}
+.rl.sent,.rl:not(:empty){color:#1fa855}
+.chips{display:flex;gap:6px;overflow-x:auto;margin:10px 0 8px;scrollbar-width:none}
+.fc{flex:none;padding:6px 12px;border-radius:999px;border:1px solid var(--b);background:var(--c2);color:var(--t);font:500 13px var(--f);cursor:pointer}
+.fc.on{background:var(--ps);border-color:var(--p);color:var(--p);font-weight:700}
+.dtop{margin-bottom:12px}.dtop>div{background:var(--c);box-shadow:var(--sh)}
+#npd summary{display:flex;align-items:center;gap:6px;color:var(--p)}
+details.card{padding:12px 14px}
+.ral{max-height:52vh;overflow-y:auto;margin:4px 0}.ral .it{gap:10px}
+.rar{display:flex;align-items:center;gap:8px;flex:none}.rar .b{padding:8px 12px;font-size:13px}
+.dlg textarea{font-size:14px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -321,12 +339,13 @@ const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(
 function dlg(o){return new Promise(res=>{
   const prev=document.activeElement,F=o.fields||[],bg=document.createElement('div');bg.className='dlg-bg';
   const fh=F.map((f,i)=>{const id='dF'+i,lab=f.label?`<label for=${id}>${esc(f.label)}</label>`:'';
+    if(f.area)return lab+`<textarea id=${id} rows=${f.rows||7} style="resize:vertical;line-height:1.7">${esc(f.val??'')}</textarea>`;
     if(f.opts)return lab+`<select id=${id}>${f.opts.map(([v,l])=>`<option value="${esc(v)}"${String(v)==String(f.val??'')?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
     return lab+`<input id=${id} ${f.num?'inputmode=decimal dir=ltr':f.tel?'type=tel dir=ltr':f.ltr?'dir=ltr':''} value="${esc(f.val??'')}" placeholder="${esc(f.ph||'')}" autocomplete=off ${o.title&&!f.label?`aria-label="${esc(o.title)}"`:''}>`}).join('');
   const btns=o.choices?o.choices.map(([v,l],i)=>`<button type=button class="b${i?' s':''}" data-v=${i}>${esc(l)}</button>`).join(''):`<button type=submit class="b${o.danger?' d':''}">${esc(o.yes||'موافق')}</button>`;
   bg.innerHTML=`<div class=dlg role=${o.danger?'alertdialog':'dialog'} aria-modal=true aria-labelledby=dlgT ${o.msg?'aria-describedby=dlgM':''}><form novalidate>
   <div class=dlg-h><span class="dlg-ic${o.danger?' neg':''}">${ic(o.icon||(o.danger?'alert':'info'),21)}</span><b id=dlgT>${esc(o.title||'')}</b></div>
-  ${o.msg?`<div id=dlgM class=dlg-m>${esc(o.msg)}</div>`:''}${fh}<div class=dlg-err role=alert></div>
+  ${o.msg?`<div id=dlgM class=dlg-m>${esc(o.msg)}</div>`:''}${o.html||''}${fh}<div class=dlg-err role=alert></div>
   <div class="dlg-f${o.choices?' col':''}">${btns}${o.one?'':`<button type=button class="b s" data-x>${esc(o.no||'إلغاء')}</button>`}</div></form></div>`;
   document.body.appendChild(bg);document.body.classList.add('lock');
   requestAnimationFrame(()=>requestAnimationFrame(()=>bg.classList.add('in')));
@@ -340,11 +359,11 @@ function dlg(o){return new Promise(res=>{
   bg.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>close(o.choices[+b.dataset.v][0]));
   const x=bg.querySelector('[data-x]');if(x)x.onclick=()=>close(cv);
   bg.addEventListener('mousedown',e=>{if(e.target===bg)close(cv)});
-  const kd=e=>{if(e.key=='Escape'){e.preventDefault();close(cv)}
+  const kd=e=>{if(bg!==[...document.querySelectorAll('.dlg-bg')].pop())return;if(e.key=='Escape'){e.preventDefault();close(cv)}
     else if(e.key=='Tab'){const f=[...bg.querySelectorAll('input,select,button')];if(!f.length)return;const a=f[0],z=f[f.length-1];
       if(e.shiftKey&&document.activeElement===a){e.preventDefault();z.focus()}else if(!e.shiftKey&&document.activeElement===z){e.preventDefault();a.focus()}}};
   document.addEventListener('keydown',kd,true);
-  setTimeout(()=>{const f=bg.querySelector('input,select')||bg.querySelector('.dlg-f .b');if(f){f.focus();if(f.select)f.select()}},60);
+  setTimeout(()=>{const f=bg.querySelector('input,select')||bg.querySelector('.dlg-f .b');if(f){f.focus();if(f.select&&f.tagName=='INPUT')f.select()}},60);
 })}
 const ask=(title,val,o={})=>dlg({title,...o,fields:[{k:'v',val,num:o.num,ph:o.ph,ltr:o.ltr}]}).then(r=>r?r.v:null);
 const ok=(title,o={})=>dlg({title,...o}).then(r=>!!r);
@@ -409,9 +428,9 @@ async function homeV(){
         +kpi('wallet','ربح 7 أيام',`${fmc(wp)} <small>ل.س</small>`,pw?delta(wp,pw.p)+' عن الأسبوع السابق':'',wp<0);
       $('#hch').innerHTML=secH('rep','مبيعات آخر 7 أيام','rep','التقارير')+chartSvg(D)+'<div class=m>بالليرة السورية، بعد استبعاد الفواتير الملغاة</div>'})}
   if(dbt)db.from('partner_balances').select('*').then(({data,error})=>{if(!alive()||!$('#hdebt'))return;if(error){$('#hdebt').style.display='none';return}
-    const P=data||[],rc=P.reduce((a,p)=>a+Math.max(0,+p.receivable||0),0),py=P.reduce((a,p)=>a+Math.max(0,+p.payable||0),0),top=P.filter(p=>+p.receivable>0).sort((a,b)=>b.receivable-a.receivable).slice(0,5);
+    const P=data||[];S.debtD=P;S.balc=S.balc||{};P.forEach(p=>{const o=S.balc[p.id];S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:o?o.usd:undefined}});const rc=P.reduce((a,p)=>a+Math.max(0,+p.receivable||0),0),py=P.reduce((a,p)=>a+Math.max(0,+p.payable||0),0),top=P.filter(p=>+p.receivable>0).sort((a,b)=>b.receivable-a.receivable).slice(0,5);
     $('#hdebt').innerHTML=secH('debt','الديون','debt')+`<div class=bal2><div><span class=m>لنا عند الزبائن</span><b>${fmt(rc)}</b></div><div><span class=m>علينا للموردين</span><b class="${py>0?'neg':''}">${fmt(py)}</b></div></div>`
-     +(top.length?'<div class=m>أكبر المدينين</div>'+top.map(p=>`<div class="it cl" onclick="partnerV('${p.id}')"><span>${esc(p.name)}</span><b class=neg>${fmt(p.receivable)}</b></div>`).join(''):'<div class=empty>لا ديون مستحقة على الزبائن</div>')});
+     +(top.length?'<div class=m>أكبر المدينين</div>'+top.map(p=>`<div class="it cl" onclick="partnerV('${p.id}')"><span>${esc(p.name)}<br><span class="m rl" data-rl="${p.id}">${rlTxt(p.id)}</span></span><span class=dr><b class=neg>${fmt(p.receivable)}</b>${waBtn(p.id)}</span></div>`).join(''):'<div class=empty>لا ديون مستحقة على الزبائن</div>')});
   if(rp||sl)(rp?db.from('sales').select('id,sale_date,total,currency,paid,voided_at,created_at,partners(name)').order('created_at',{ascending:false}).limit(5).then(r=>r.error?null:(r.data||[]).map(x=>({...x,pn:x.partners?.name})))
      :db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:5}).then(r=>r.error?null:(r.data||[]).map(x=>({...x,pn:x.partner_name}))))
    .then(L=>{if(!alive()||!$('#hrec'))return;if(!L){$('#hrec').style.display='none';return}
@@ -817,9 +836,11 @@ async function partnerV(id){
   const {data}=await db.from('partner_balances').select('receivable,payable').eq('id',id).single();
   const r=data?+data.receivable:0,pa=data?+data.payable:0;
   const {data:cb}=await db.from('partner_cur_balances').select('*').eq('partner_id',id).single();
+  (S.balc=S.balc||{})[id]={r,pa,usd:cb?+cb.rec_usd||0:0};
   const cl=cb&&(+cb.rec_usd||+cb.pay_usd)?`<div class=m>منها بالدولار: ${+cb.rec_usd?'لنا $'+fmt(cb.rec_usd)+' ':''}${+cb.pay_usd?'علينا $'+fmt(cb.pay_usd):''}</div>`:'';
   $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${KL(p.kind)}</span>${p.phone?`<div class=m dir=ltr style="text-align:right">${esc(p.phone)}</div>`:''}
   ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}${cl}
+  ${c&&r>0?`<button class="b wa" style="width:100%;margin:8px 0" onclick="remind('${id}')">${ic('wa',18)} تذكير عبر واتساب</button><div class="m rl" data-rl="${id}" style="text-align:center;margin:-4px 0 8px">${rlTxt(id)}</div>`:''}
   <div class=row>${c?`<button class=b onclick="rcvGo('${id}','receipt')">سند قبض</button>`:''}${sp?`<button class=b onclick="rcvGo('${id}','payment')">سند دفع</button>`:''}</div>
   <div class=row style="margin-top:8px"><button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="debtV()">رجوع</button></div><div class=card id=stm></div>`;
@@ -1468,14 +1489,73 @@ async function delP(id){
 
 /* ---- الديون ---- */
 const KL=k=>k=='customer'?'زبون':k=='supplier'?'مورد':'زبون ومورد';
+
+/* ---- تذكير الديون عبر واتساب ---- */
+const WAT0='مرحباً {الاسم}،\nنودّ تذكيركم بأن الرصيد المستحق عليكم لدى {المحل} هو {المبلغ} حتى تاريخ {التاريخ}.\nنرجو التكرّم بتسديده في أقرب وقت، وشكراً لتعاملكم معنا.\n{هاتف_المحل}';
+const watGet=()=>localStorage['wat'+S.shop.id]||WAT0;
+const RL=()=>{try{return JSON.parse(localStorage['rl'+S.shop.id]||'{}')}catch(e){return{}}};
+const rlTxt=id=>{const t=RL()[id];if(!t)return '';const d=Math.floor((new Date(new Date().toDateString())-new Date(new Date(t).toDateString()))/864e5);return 'ذُكّر '+(d<=0?'اليوم':d==1?'أمس':d==2?'قبل يومين':d<=10?'قبل '+d+' أيام':'قبل '+d+' يوماً')};
+const phOk=ph=>waNum(ph).length>=10;
+function waMsg(p,r,usd){
+  const amt=fmt(r)+' ل.س'+(usd>0?' (منها $'+fmt(usd)+' بالدولار)':'');
+  return watGet().replaceAll('{الاسم}',p.name).replaceAll('{المبلغ}',amt).replaceAll('{المحل}',S.shop.name).replaceAll('{التاريخ}',today()).replaceAll('{هاتف_المحل}',S.shop.phones||'').replace(/\n+$/,'')}
+async function balOf(id){
+  const c=(S.balc=S.balc||{})[id];if(c&&c.usd!==undefined)return c;
+  const [a,b]=await Promise.all([db.from('partner_balances').select('receivable,payable').eq('id',id).single(),db.from('partner_cur_balances').select('*').eq('partner_id',id).maybeSingle().then(r=>r,()=>({}))]);
+  if(a.error&&!c)return null;
+  return S.balc[id]={r:a.data?+a.data.receivable:c.r,pa:a.data?+a.data.payable:c.pa,usd:b&&b.data?+b.data.rec_usd||0:0}}
+async function remind(id){
+  const p=S.parts.find(x=>x.id==id);if(!p)return;
+  const b=await balOf(id);if(!b)return toast('تعذّر جلب الرصيد، تحقق من الاتصال');
+  if(!(b.r>0))return toast('لا يوجد رصيد مستحق على '+p.name);
+  let ph=p.phone;
+  if(!phOk(ph)){
+    const f=await dlg({title:'رقم واتساب '+p.name,msg:'لا يوجد رقم هاتف صحيح محفوظ لهذا الزبون. سيُحفظ الرقم في بياناته.',icon:'wa',yes:'حفظ وإرسال',fields:[{k:'ph',label:'رقم الهاتف',tel:true,val:ph||'',ph:'09xxxxxxxx'}],check:v=>phOk(v.ph)?'':'أدخل رقماً صحيحاً، مثل 0933123456'});
+    if(!f)return;ph=f.ph.trim();p.phone=ph;
+    db.from('partners').update({phone:ph}).eq('id',id).then(({error})=>{if(error)toast('لم يُحفظ الرقم: '+error.message)})}
+  const url='https://wa.me/'+waNum(ph)+'?text='+encodeURIComponent(waMsg(p,b.r,b.usd));
+  const w=open(url,'_blank');if(!w)location.href=url;
+  const L=RL();L[id]=Date.now();try{localStorage['rl'+S.shop.id]=JSON.stringify(L)}catch(e){}
+  document.querySelectorAll(`[data-rl="${id}"]`).forEach(e=>{e.textContent=rlTxt(id);e.classList.add('sent')});
+}
+async function watEdit(){
+  const f=await dlg({title:'نص رسالة التذكير',icon:'wa',yes:'حفظ',msg:'الكلمات بين القوسين تُستبدل تلقائياً:\n{الاسم} · {المبلغ} · {المحل} · {التاريخ} · {هاتف_المحل}\nاترك النص فارغاً للعودة للنص الافتراضي.',fields:[{k:'t',area:true,val:watGet()}],check:v=>!v.t.trim()||v.t.includes('{المبلغ}')?'':'يجب أن يحتوي النص على {المبلغ}'});
+  if(!f)return;const t=f.t.trim();if(!t||t==WAT0)localStorage.removeItem('wat'+S.shop.id);else localStorage['wat'+S.shop.id]=t;toast('تم حفظ نص الرسالة ✓')}
+function remindAll(){
+  const L=(S.debtD||[]).filter(p=>+p.receivable>0).sort((a,b)=>b.receivable-a.receivable);
+  if(!L.length)return toast('لا يوجد زبائن عليهم ديون');
+  const tot=L.reduce((a,p)=>a+(+p.receivable),0);
+  dlg({title:'تذكير المدينين ('+L.length+')',icon:'wa',one:true,yes:'تم',msg:'المجموع '+fmt(tot)+' ل.س. اضغط إرسال بجانب كل زبون ليفتح واتساب برسالة جاهزة، ثم ارجع للتالي.',
+   html:`<div class=ral>${L.map(p=>{const pp=S.parts.find(x=>x.id==p.id)||{},has=phOk(pp.phone);return `<div class=it><span>${esc(p.name)}<br><span class=m data-rl="${p.id}">${rlTxt(p.id)||(has?'':'بدون رقم هاتف')}</span></span><span class=rar><b class=neg>${fmt(p.receivable)}</b><button type=button class="b wa" onclick="remind('${p.id}')">${ic('wa',16)}${has?'إرسال':'أضف رقم'}</button></span></div>`}).join('')}</div>`})}
+const waBtn=id=>`<button class=wab onclick="event.stopPropagation();remind('${id}')" title="تذكير عبر واتساب" aria-label="تذكير عبر واتساب">${ic('wa',18)}</button>`;
+
 async function debtV(){
-  const {data}=await db.from('partner_balances').select('*').order('name');
-  $('#v').innerHTML=`<div class=card><b>زبون / مورد جديد</b><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف">
-  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><button class=b onclick="addPart()">حفظ</button></div>
-  <div class=card>${(data||[]).map(p=>{const r=+p.receivable,pa=+p.payable;
-  const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه: ${fmt(r)}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا: ${fmt(pa)}</b>`:`<b>لنا: ${fmt(r)}<br>علينا: ${fmt(pa)}</b>`;
-  return `<div class=it onclick="partnerV('${p.id}')"><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}</span></span><span style="text-align:end">${amt}</span></div>`}).join('')||'<div class=m>لا أطراف بعد</div>'}
-  <div class=m>الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب. لتسجيل سند قبض أو دفع بسرعة استخدم تبويب السندات.</div></div>`
+  const t0=S.tab;$('#v').innerHTML=`<div class=card>${skl(6)}</div>`;
+  const [{data,error},cb]=await Promise.all([db.from('partner_balances').select('*').order('name'),db.from('partner_cur_balances').select('*').then(r=>r.data||[],()=>[])]);
+  if(S.tab!==t0)return;
+  if(error&&!data){$('#v').innerHTML=`<div class="card empty">تعذّر تحميل الديون. ${navigator.onLine?esc(error.message):'لا يوجد اتصال بالإنترنت.'}</div>`;return}
+  S.debtD=data||[];S.balc={};S.debtD.forEach(p=>S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:0});(cb||[]).forEach(c=>{if(S.balc[c.partner_id])S.balc[c.partner_id].usd=+c.rec_usd||0});
+  const D=S.debtD,rc=D.filter(p=>+p.receivable>0),py=D.filter(p=>+p.payable>0);
+  S.dF=S.dF||'all';
+  $('#v').innerHTML=`<div class="bal2 dtop"><div><span class=m>لنا عند الزبائن (${rc.length})</span><b>${fmt(rc.reduce((a,p)=>a+(+p.receivable),0))}</b></div><div><span class=m>علينا للموردين (${py.length})</span><b class="${py.length?'neg':''}">${fmt(py.reduce((a,p)=>a+(+p.payable),0))}</b></div></div>
+  <div class=card>
+  <div class=sbar>${ic('search',18)}<input id=dq type=search placeholder="ابحث بالاسم أو الهاتف" oninput="debtList()" autocomplete=off aria-label="بحث"></div>
+  <div class=chips>${[['all','الكل ('+D.length+')'],['rc','عليهم ديون ('+rc.length+')'],['py','لهم علينا ('+py.length+')']].map(([k,l])=>`<button class="fc${S.dF==k?' on':''}" onclick="S.dF='${k}';document.querySelectorAll('.fc').forEach(b=>b.classList.toggle('on',b==this));debtList()">${l}</button>`).join('')}</div>
+  ${rc.length?`<div class=row style="margin:4px 0 2px"><button class="b wa" onclick="remindAll()">${ic('wa',18)} تذكير المدينين</button><button class="b s" style="flex:0;white-space:nowrap" onclick="watEdit()">نص الرسالة</button></div>`:''}
+  <div id=dl></div>
+  <div class=m style="margin-top:8px">الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>
+  <details class=card id=npd><summary>${ic('plus',16)} زبون / مورد جديد</summary><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف" type=tel dir=ltr>
+  <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
+  debtList()
+}
+function debtList(){
+  const el=$('#dl');if(!el)return;const q=nAr(($('#dq')||{}).value||'');
+  const L=(S.debtD||[]).filter(p=>(S.dF=='rc'?+p.receivable>0:S.dF=='py'?+p.payable>0:true)).filter(p=>{if(!q)return true;const pp=S.parts.find(x=>x.id==p.id)||{};return nAr(p.name).includes(q)||(pp.phone||'').includes(q)});
+  if(S.dF=='rc')L.sort((a,b)=>b.receivable-a.receivable);if(S.dF=='py')L.sort((a,b)=>b.payable-a.payable);
+  el.innerHTML=L.map(p=>{const r=+p.receivable,pa=+p.payable,pp=S.parts.find(x=>x.id==p.id)||{};
+   const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه ${fmt(r)}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا ${fmt(pa)}</b>`:`<b>لنا ${fmt(r)}<br>علينا ${fmt(pa)}</b>`;
+   const rl=rlTxt(p.id);
+   return `<div class="it cl" onclick="partnerV('${p.id}')"><span class=dn><span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}${pp.phone?' · <span dir=ltr>'+esc(pp.phone)+'</span>':''}</span>${r>0?`<br><span class="m rl${rl?' sent':''}" data-rl="${p.id}">${rl}</span>`:''}</span></span><span class=dr><span style="text-align:end">${amt}</span>${r>0?waBtn(p.id):''}</span></div>`}).join('')||'<div class=empty>لا نتائج</div>'
 }
 async function addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
