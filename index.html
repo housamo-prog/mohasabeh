@@ -1310,8 +1310,13 @@ async function logout(){
   const done=()=>{Object.keys(localStorage).filter(k=>k.startsWith('sb-')).forEach(k=>localStorage.removeItem(k));location.reload()};
   db.auth.signOut().then(done,done)
 }
-function autoBackup(){
-  db.rpc('ensure_daily_backup',{p_shop:S.shop.id}).then(r=>{if(r&&r.data===true)toast('تم أخذ نسخة احتياطية تلقائية ✓')},()=>{})
+async function autoBackup(){
+  if(bkBusy||!S.shop||S.role!=='owner'||navigator.onLine===false)return;
+  return bkTask(async()=>{
+    if(qGet().length){toast('تم تأجيل النسخة التلقائية حتى تكتمل مزامنة العمليات.');return}
+    const data=await bkRpc('ensure_daily_backup',{p_shop:S.shop.id});
+    if(data===true)toast('تم أخذ نسخة احتياطية تلقائية ✓');
+  });
 }
 
 /* ---- تثبيت التطبيق ---- */
@@ -1761,60 +1766,126 @@ async function all(t,cols='*',ord=['id']){
     o=o.concat(data);if(data.length<1000)return o;i+=1000
   }
 }
-const saveJson=(obj,name)=>{
-  const blob=new Blob([JSON.stringify(obj)],{type:'application/json'}),url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
-  return {url,kb:Math.round(blob.size/1024)}
-};
-const bsig=()=>{const c=new AbortController();setTimeout(()=>c.abort(),180000);return c.signal};
-async function backup(){
-  toast('جارٍ تجهيز النسخة...');
-  const {data,error}=await db.rpc('make_snapshot',{p_shop:S.shop.id}).abortSignal(bsig());
-  if(error)return toast('فشلت النسخة: '+error.message);
-  const name='wesam-backup-'+today()+'.json',f=saveJson(data,name);
-  if($('#bk'))$('#bk').innerHTML=`<a href="${f.url}" download="${name}">اضغط هنا إذا لم يبدأ التنزيل (${f.kb} KB)</a>`;
-  toast('تم تجهيز النسخة ✓')
+
+let bkBusy=false;
+function bkGuard(){
+  if(!S.shop||!S.shop.id)throw new Error('لم يتم تحديد المحل. أعد تسجيل الدخول.');
+  if(S.role!=='owner')throw new Error('هذه العملية متاحة لمالك المحل فقط.');
+  if(navigator.onLine===false)throw new Error('لا يوجد اتصال بالإنترنت.');
 }
+function bkError(e){
+  const msg=String(e&&e.message||e||'خطأ غير معروف'), code=String(e&&e.code||'');
+  if(code==='PGRST202'||code==='42883')return 'دالة النسخ المطلوبة غير موجودة أو غير متاحة في مخطط API. يلزم فحص تثبيت وظائف النسخ في قاعدة البيانات. ['+code+'] '+msg;
+  if(code==='42501'||/permission denied/i.test(msg))return 'لا توجد صلاحية كافية لتنفيذ العملية. تحقق من حساب المالك وصلاحيات قاعدة البيانات. '+msg;
+  if(/abort|timeout|timed out|fetch|network/i.test(msg)||code==='57014')return 'تعذر تأكيد نتيجة الطلب بسبب الاتصال أو انتهاء المهلة. راجع قائمة النسخ وحالة البيانات قبل إعادة أي عملية كتابة. '+msg;
+  return (code?'['+code+'] ':'')+msg;
+}
+async function bkRpc(fn,args){
+  const c=new AbortController(),timer=setTimeout(()=>c.abort(),180000);
+  try{
+    const r=await db.rpc(fn,args).abortSignal(c.signal);
+    if(r.error)throw r.error;
+    return r.data;
+  }finally{clearTimeout(timer)}
+}
+function bkSnapshot(value){
+  let d=value;
+  if(typeof d==='string'){try{d=JSON.parse(d)}catch(e){throw new Error('استجابة النسخ ليست JSON صالحاً.')}}
+  if(!d||typeof d!=='object'||Array.isArray(d)||d.version!==1||!d.tables||typeof d.tables!=='object'||Array.isArray(d.tables))throw new Error('صيغة النسخة غير مدعومة: يلزم version=1 وكائن tables. لم يتم بدء الاسترجاع.');
+  const keys=Object.keys(d.tables);
+  if(!keys.length||keys.some(k=>!Array.isArray(d.tables[k])))throw new Error('بنية جداول النسخة غير صالحة.');
+  if(d.shop_id!=null&&String(d.shop_id)!==String(S.shop.id))throw new Error('النسخة تخص محلاً آخر. تم إيقاف العملية لحماية البيانات.');
+  return d;
+}
+async function bkTask(work){
+  if(bkBusy){toast('توجد عملية نسخ أو استرجاع قيد التنفيذ؛ انتظر اكتمالها.');return}
+  bkBusy=true;
+  try{bkGuard();return await work()}
+  catch(e){console.error('Backup operation failed',e);toast(bkError(e))}
+  finally{bkBusy=false}
+}
+function bkLink(f,name){
+  const el=$('#bk');if(!el)return;
+  el.textContent='';const a=document.createElement('a');a.href=f.url;a.download=name;
+  a.textContent='اضغط هنا إذا لم يبدأ التنزيل ('+f.kb+' KB)';el.appendChild(a);
+}
+const bkUrls=[];
+const saveJson=(obj,name)=>{
+  const blob=new Blob([JSON.stringify(obj)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob);
+  bkUrls.push(url);
+  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);
+  try{a.click()}finally{a.remove()}
+  return {url,kb:Math.max(1,Math.round(blob.size/1024))}
+};
+addEventListener('pagehide',()=>{bkUrls.splice(0).forEach(url=>URL.revokeObjectURL(url))});
+const bsig=()=>{const c=new AbortController();const t=setTimeout(()=>c.abort(),180000);c.signal.addEventListener('abort',()=>clearTimeout(t),{once:true});return c.signal};
+async function backup(){return bkTask(async()=>{
+  if(qGet().length)throw new Error('توجد عمليات لم تُرسل بعد. أكمل المزامنة قبل إنشاء نسخة حديثة.');
+  toast('جارٍ تجهيز النسخة...');
+  const data=bkSnapshot(await bkRpc('make_snapshot',{p_shop:S.shop.id}));
+  const name='wesam-backup-'+today()+'.json',f=saveJson(data,name);bkLink(f,name);
+  toast('تم تجهيز ملف النسخة وإرسال طلب التنزيل ✓');
+})}
 async function bkCard(){
   const el=$('#bkc');if(!el)return;
-  const {data,error}=await db.rpc('list_backups',{p_shop:S.shop.id});
-  if(error){el.innerHTML='<b>🛡️ النسخ الاحتياطي</b><div class=m>شغّل ملف phase1o_backup_restore.sql لتفعيل النسخ التلقائي والاسترجاع.</div>';return}
-  S.bks=data||[];
+  let data,error;
+  try{bkGuard();data=await bkRpc('list_backups',{p_shop:S.shop.id});if(!Array.isArray(data))throw new Error('استجابة قائمة النسخ غير صالحة.');}
+  catch(e){error=e;data=[]}
+  if(!el.isConnected)return;
+  S.bks=data.filter(b=>b&&typeof b.id==='string'&&/^[a-zA-Z0-9_-]+$/.test(b.id)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
   const K={auto:'تلقائية',manual:'يدوية',pre_restore:'نسخة أمان (قبل استرجاع أو تصفير)'},last=S.bks.find(b=>b.kind!='pre_restore');
   el.innerHTML=`<b>🛡️ النسخ الاحتياطي والاسترجاع</b>
-  <div class=m>${last?'آخر نسخة: '+fdt(last.created_at):'لا توجد نسخ بعد'} · تؤخذ نسخة تلقائية يومياً وتُحفظ آخر 7 نسخ.</div>
+  <div class=m>${last?'آخر نسخة: '+fdt(last.created_at):'لا توجد نسخ بعد'} · يجري طلب النسخة التلقائية عند دخول المالك مع اتصال بالإنترنت؛ سياسة الحفظ يحددها الخادم.</div>
   <div class=row style="margin:8px 0"><button class=b onclick="bkNow()">إنشاء نسخة الآن</button><button class="b s" onclick="backup()">تنزيل على جهازي</button></div>
   <div id=bk class=m></div>
-  ${S.bks.map(b=>`<div class=it><span>${K[b.kind]} · ${fdt(b.created_at)}<br><span class=m>فواتير بيع ${(b.counts||{}).sales||0} · قيود ${(b.counts||{}).journal_entries||0} · ${Math.round(b.size_bytes/1024)} KB</span></span><span style="display:flex;gap:6px"><button class="b s" style="padding:6px 10px" onclick="bkDl('${b.id}')">تنزيل</button><button class="b s neg" style="padding:6px 10px" onclick="bkRestore('${b.id}')">استرجاع</button></span></div>`).join('')}
+  ${error?'<div class="m neg">تعذر تحميل القائمة: '+esc(bkError(error))+'</div>':''}
+  ${S.bks.map(b=>`<div class=it><span>${esc(K[b.kind]||String(b.kind||"غير محدد"))} · ${fdt(b.created_at)}<br><span class=m>فواتير بيع ${(b.counts||{}).sales||0} · قيود ${(b.counts||{}).journal_entries||0} · ${Math.round(b.size_bytes/1024)} KB</span></span><span style="display:flex;gap:6px"><button class="b s" style="padding:6px 10px" onclick="bkDl('${b.id}')">تنزيل</button><button class="b s neg" style="padding:6px 10px" onclick="bkRestore('${b.id}')">استرجاع</button></span></div>`).join('')}
   <div class=m style="margin-top:10px">استرجاع من ملف نسخة محفوظ على جهازك:</div><input type=file id=bkf accept=".json,application/json" onchange="bkFile(this)">`
-}
-async function bkNow(){const r=await call('create_backup',{p_shop:S.shop.id});if(r!==undefined){toast('تم إنشاء النسخة ✓');bkCard()}}
-async function bkDl(id){
-  const {data,error}=await db.rpc('get_backup',{p_shop:S.shop.id,p_backup:id}).abortSignal(bsig());
-  if(error)return toast(error.message);
-  saveJson(data,'wesam-backup-'+String(data.taken_at||'').slice(0,10)+'.json');toast('تم التنزيل ✓')
 }
 async function bkAsk(label){
   if(!navigator.onLine){toast('الاسترجاع يحتاج اتصالاً بالإنترنت');return false}
   if(qGet().length){toast('يوجد عمليات بانتظار الإرسال. انتظر ترحيلها أولاً.');return false}
-  if(!await ok('استرجاع البيانات',{danger:true,yes:'متابعة',msg:'سيتم استبدال كل بيانات المحل ببيانات '+label+'.\nكل ما سُجّل بعدها سيُحذف.\nسنأخذ نسخة أمان قبل الاسترجاع لتتمكن من التراجع.\nتأكد أن الكاشير لا يستخدم البرنامج الآن.\n\nهل تريد المتابعة؟'}))return false;
+  if(!await ok('استرجاع البيانات',{danger:true,yes:'متابعة',msg:'سيتم استبدال كل بيانات المحل ببيانات '+label+'.\nكل ما سُجّل بعدها سيُحذف.\nتأكد من تنزيل نسخة أمان مستقلة قبل المتابعة؛ تنفيذ نسخة الأمان التلقائية يعتمد على الخادم.\nتأكد أن الكاشير لا يستخدم البرنامج الآن.\n\nهل تريد المتابعة؟'}))return false;
   if(((await ask('للتأكيد اكتب كلمة: استرجاع','',{danger:true,yes:'استرجاع',ph:'استرجاع'}))||'').trim()!=='استرجاع'){toast('تم الإلغاء');return false}
   return true
 }
+
+async function bkNow(){return bkTask(async()=>{
+  if(qGet().length)throw new Error('أكمل مزامنة العمليات المعلّقة أولاً.');
+  toast('جارٍ إنشاء النسخة على الخادم...');
+  await bkRpc('create_backup',{p_shop:S.shop.id});
+  toast('أكد الخادم إنشاء النسخة ✓');await bkCard();
+})}
+async function bkDl(id){return bkTask(async()=>{
+  if(!S.bks||!S.bks.some(b=>b.id===id))throw new Error('النسخة غير موجودة في القائمة الحالية. حدّث القائمة.');
+  const data=bkSnapshot(await bkRpc('get_backup',{p_shop:S.shop.id,p_backup:id}));
+  const date=String(data.taken_at||today()).slice(0,10).replace(/[^0-9-]/g,'');
+  const name='wesam-backup-'+date+'.json',f=saveJson(data,name);bkLink(f,name);
+  toast('تم تجهيز ملف النسخة وإرسال طلب التنزيل ✓');
+})}
 async function bkRun(fn,args){
-  toast('جارٍ الاسترجاع... لا تغلق الصفحة');
-  const {data,error}=await db.rpc(fn,args).abortSignal(bsig());
-  if(error)return toast('فشل الاسترجاع ولم يتغيّر شيء: '+error.message);
-  await say('تم الاسترجاع بنجاح',{msg:'فواتير البيع: '+(data.sales||0)+'\nالقيود المحاسبية: '+(data.journal_entries||0)+'\nأخذنا نسخة أمان قبل الاسترجاع، تجدها بالقائمة إن أردت التراجع.'});
-  localStorage.removeItem('cache');location.reload()
+  bkGuard();
+  if(qGet().length)throw new Error('ظهرت عمليات معلّقة؛ أكمل مزامنتها قبل الاسترجاع.');
+  toast('جارٍ الاسترجاع... لا تغلق الصفحة ولا تنفذ عمليات أخرى');
+  let data;
+  try{data=await bkRpc(fn,args)}catch(e){
+    throw new Error('لم يتم تأكيد الاسترجاع. لا تفترض أن البيانات لم تتغير ولا تكرر الطلب قبل فحص حالتها. '+bkError(e));
+  }
+  const counts=data&&typeof data==='object'?data:{};
+  await say('أكد الخادم اكتمال الاسترجاع',{msg:'فواتير البيع: '+(counts.sales??'غير مذكور')+'\nالقيود المحاسبية: '+(counts.journal_entries??'غير مذكور')+'\nتحقق من البيانات وقائمة نسخ الأمان بعد إعادة التحميل.'});
+  localStorage.removeItem('cache');location.reload();
 }
-async function bkRestore(id){const b=S.bks.find(x=>x.id==id);if(b&&await bkAsk('نسخة '+fdt(b.created_at)))bkRun('restore_backup',{p_shop:S.shop.id,p_backup:id,p_confirm:'استرجاع'})}
+async function bkRestore(id){return bkTask(async()=>{
+  const b=(S.bks||[]).find(x=>x.id===id);if(!b)throw new Error('النسخة غير موجودة في القائمة الحالية.');
+  if(await bkAsk('نسخة '+fdt(b.created_at)))await bkRun('restore_backup',{p_shop:S.shop.id,p_backup:id,p_confirm:'استرجاع'});
+})}
 async function bkFile(inp){
-  const f=inp.files[0];if(!f)return;
-  let d;try{d=JSON.parse(await f.text())}catch(e){inp.value='';return toast('الملف غير صالح')}
-  if(d&&d.version===1&&d.tables){if(await bkAsk('الملف '+f.name))bkRun('restore_from_json',{p_shop:S.shop.id,p_data:d,p_confirm:'استرجاع'})}
-  else toast('هذا الملف ليس بصيغة النسخ الجديدة. نزّل نسخة جديدة من هنا ثم استرجع منها.');
-  inp.value=''
+  const f=inp.files&&inp.files[0];if(!f)return;
+  try{await bkTask(async()=>{
+    let raw;try{raw=JSON.parse(await f.text())}catch(e){throw new Error('تعذر قراءة الملف أو أن محتواه ليس JSON صالحاً.');}
+    const d=bkSnapshot(raw);
+    if(await bkAsk('الملف '+f.name))await bkRun('restore_from_json',{p_shop:S.shop.id,p_data:d,p_confirm:'استرجاع'});
+  })}finally{inp.value=''}
 }
 /* ---- ماسح الباركود بالكاميرا ---- */
 let H5,SC=null;
