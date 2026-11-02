@@ -361,7 +361,7 @@ const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(
 function dlg(o){return new Promise(res=>{
   const prev=document.activeElement,F=o.fields||[],bg=document.createElement('div');bg.className='dlg-bg';
   const fh=F.map((f,i)=>{const id='dF'+i,lab=f.label?`<label for=${id}>${esc(f.label)}</label>`:'';
-    if(f.checks)return lab+`<div style="max-height:45vh;overflow:auto;display:grid;gap:8px" role=group aria-label="${esc(f.label||'اختيارات')}">${f.checks.map(([v,l])=>`<label style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--b);border-radius:8px"><input type=checkbox name="${id}" value="${esc(v)}" ${(f.val||[]).includes(v)?'checked':''} style="width:20px;height:20px;margin:0"><span>${esc(l)}</span></label>`).join('')}</div>`;
+    if(f.checks)return lab+`<div style="max-height:45vh;overflow:auto;display:grid;gap:8px">${f.checks.map(([v,l])=>`<label style="display:flex;align-items:center;gap:10px;padding:8px"><input type=checkbox name="${id}" value="${esc(v)}" ${(f.val||[]).includes(v)?'checked':''} style="width:20px;height:20px;margin:0"><span>${esc(l)}</span></label>`).join('')}</div>`;
     if(f.area)return lab+`<textarea id=${id} rows=${f.rows||7} style="resize:vertical;line-height:1.7">${esc(f.val??'')}</textarea>`;
     if(f.opts)return lab+`<select id=${id}>${f.opts.map(([v,l])=>`<option value="${esc(v)}"${String(v)==String(f.val??'')?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
     return lab+`<input id=${id} ${f.num?'inputmode=decimal dir=ltr':f.tel?'type=tel dir=ltr':f.ltr?'dir=ltr':''} value="${esc(f.val??'')}" placeholder="${esc(f.ph||'')}" autocomplete=off ${o.title&&!f.label?`aria-label="${esc(o.title)}"`:''}>`}).join('');
@@ -417,20 +417,16 @@ function chartSvg(D){
    <text x=${x+bw/2} y=${H-9} text-anchor=middle font-size=12 ${t?'style="fill:var(--p);font-weight:700"':''}>${t?'اليوم':dn(d.d)}</text></g>`}).join('')}</svg>`}
 const delta=(a,b)=>{if(!b)return '';const p=Math.round((a-b)/Math.abs(b)*100);return `<span class="dl ${p>=0?'up':'dn'}">${ic(p>=0?'up':'down',14)}${Math.abs(p)}%</span>`};
 const kpi=(icn,l,v,sub,neg)=>`<div class=kpi><div class=kl>${ic(icn,16)}${l}</div><div class="kv ${neg?'neg':''}">${v}</div><div class=ks>${sub||''}</div></div>`;
-const shortcutKey=()=> 'home_shortcuts:'+String(S.shop?.id||'')+':'+String(S.u?.id||'local');
+const HOME_FIXED=['sale','buy','debt','rcv'];
+const homeShortcutKey=()=> 'home_shortcuts:'+String(S.shop?.id||'');
 function shortcutIds(){
-  const defaults=['sale','buy','rcv','prod'];
-  try{const raw=localStorage.getItem(shortcutKey())??localStorage.getItem('home_shortcuts');
-    if(raw===null)return defaults;
-    const a=JSON.parse(raw);return Array.isArray(a)?[...new Set(a.filter(k=>typeof k==='string'&&k!=='home'&&Object.prototype.hasOwnProperty.call(TABS,k)))].slice(0,12):defaults;
-  }catch(e){return defaults}
+  let a=[];try{const v=JSON.parse(localStorage.getItem(homeShortcutKey())??localStorage.getItem('home_shortcuts')??'[]');if(Array.isArray(v))a=v}catch(e){}
+  return [...new Set([...HOME_FIXED,...a])].filter(k=>typeof k==='string'&&k!=='home'&&Object.prototype.hasOwnProperty.call(TABS,k)).slice(0,12);
 }
 async function shortcutManager(){
-  const opts=Object.keys(TABS).filter(k=>k!=='home'&&tabOk(k)).map(k=>[k,TABS[k]]);
-  const f=await dlg({title:'اختصارات الشاشة الرئيسية',icon:'home',yes:'حفظ',msg:'حدد الأقسام التي تريد إظهارها. يمكنك اختيار حتى 12 اختصاراً.',fields:[{k:'ids',label:'اختر الأقسام',checks:opts,val:shortcutIds()}],check:v=>v.ids.length>12?'الحد الأقصى 12 اختصاراً':''});
-  if(!f)return;
-  try{localStorage.setItem(shortcutKey(),JSON.stringify(f.ids));}
-  catch(e){toast('تعذر حفظ الاختصارات في هذا المتصفح');return}
+  const opts=Object.keys(TABS).filter(k=>k!=='home'&&!HOME_FIXED.includes(k)&&tabOk(k)).map(k=>[k,TABS[k]]);
+  const f=await dlg({title:'اختصارات الشاشة الرئيسية',icon:'home',yes:'حفظ',msg:'فاتورة البيع، فاتورة الشراء، الديون، والقبض والدفع اختصارات ثابتة حسب الصلاحيات. اختر حتى 8 اختصارات إضافية.',fields:[{k:'ids',label:'اختصارات إضافية',checks:opts,val:shortcutIds()}],check:v=>v.ids.length>8?'الحد الأقصى 8 اختصارات إضافية':''});
+  if(!f)return;try{localStorage.setItem(homeShortcutKey(),JSON.stringify(f.ids))}catch(e){toast('تعذر حفظ الاختصارات');return}
   if(S.tab==='home')homeV();toast('تم حفظ الاختصارات ✓');
 }
 async function homeV(){
@@ -438,13 +434,13 @@ async function homeV(){
   const now=new Date(),greet=now.getHours()<12?'صباح الخير':'مساء الخير';
   const dstr=now.toLocaleDateString('ar-SY-u-nu-latn',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const left=Math.ceil((new Date(S.shop.subscription_until)-new Date(now.toDateString()))/864e5);
-  const QA=shortcutIds().filter(k=>tabOk(k)).map(k=>[k,TABS[k]]);
+  const QA=shortcutIds().filter(tabOk).map(k=>[k,({sale:'فاتورة البيع',buy:'فاتورة الشراء',debt:'الديون',rcv:'القبض والدفع'})[k]||TABS[k]]);
   const low=lowList();
   $('#v').innerHTML=`<div class=hero><div><div class=m>${dstr}</div><h2>${greet}</h2></div>${on?'':'<span class="pill warn">بدون اتصال</span>'}</div>
   ${left<=14?`<div class="card note ${left<0?'bad':''}">${ic('cal')}<span>${left<0?'انتهى الاشتراك. تواصل معنا للتجديد.':'ينتهي الاشتراك خلال '+(left<=0?'اليوم':left==1?'يوم واحد':left==2?'يومين':left<=10?left+' أيام':left+' يوماً')+' ('+S.shop.subscription_until+')'} <a href="${waLink()}" target=_blank rel=noopener>تجديد عبر واتساب</a></span></div>`:''}
   ${pendHtml()}
   ${QA.length?`<div class=qa>${QA.map(([k,l])=>`<button onclick="nav('${k}')"><span>${ic(k,22)}</span>${l}</button>`).join('')}</div>`:''}
-  <button class="b s" style="width:100%;margin:0 0 12px" onclick="shortcutManager()">إدارة الاختصارات</button>
+  <button class="b s" style="width:100%;margin-bottom:12px" onclick="shortcutManager()">إدارة الاختصارات الإضافية</button>
   ${rp?`<div class=kpis id=hk>${[0,1,2,3].map(()=>`<div class=kpi>${skl(3)}</div>`).join('')}</div>
   <div class=card id=hch>${secH('rep','مبيعات آخر 7 أيام','rep','التقارير')}${skl(4)}</div>`:''}
   <div class=hgrid>
@@ -825,7 +821,20 @@ function cartV(){
     if(S.pop==b.dataset.id){b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop')}});
   S.pop=null
 }
+let invoiceSaving=false;
 async function post(){
+  if(invoiceSaving){toast('جارٍ حفظ الفاتورة؛ انتظر اكتمال العملية');return}
+  invoiceSaving=true;
+  const btn=document.querySelector('#pbtn'),oldText=btn?.textContent,oldDisabled=btn?.disabled;
+  if(btn){btn.disabled=true;btn.textContent='جارٍ الحفظ...';btn.setAttribute('aria-busy','true')}
+  try{return await postInvoiceOnce()}
+  catch(e){console.error('Invoice save failed',e);toast('تعذر إكمال الحفظ. تحقق من الفواتير والعمليات المعلّقة قبل إعادة المحاولة.');}
+  finally{
+    invoiceSaving=false;
+    if(btn&&btn.isConnected){btn.disabled=oldDisabled;btn.textContent=oldText;btn.removeAttribute('aria-busy')}
+  }
+}
+async function postInvoiceOnce(){
   if(!S.cart.length)return toast('الفاتورة فارغة');
   if(S.mode=='open')return postOpen();
   const sale=S.mode=='sale',t=tot(),pm=$('#pm').value;
@@ -2008,27 +2017,22 @@ function vchForm(){
     h=`<select id=vdir onchange="vchExchangeLabels()"><option value=buy>شراء دولار بالليرة<option value=sell>بيع دولار بالليرة</select>
     <label id=vul for=va>مبلغ الدولار المشتَرى</label><input id=va type=number step=any min=0 inputmode=decimal oninput="vchRate()">
     <label id=vsl for=vs>مبلغ الليرة المدفوع</label><input id=vs type=number step=any min=0 inputmode=decimal oninput="vchRate()">
-    <label for=vr>سعر الصرف المحسوب — ليرة لكل دولار</label><input id=vr readonly aria-readonly=true placeholder="يُحسب من المبلغين">
+    <label for=vr>سعر الصرف المحسوب — ليرة لكل دولار</label><input id=vr readonly placeholder="يُحسب من المبلغين">
     <div class=m>أدخل المبلغين الفعليين؛ لا يُستخدم سعر الصرف الافتراضي.</div>`
   }
   $('#vf').innerHTML=h+`<button class=b style="width:100%;margin-top:6px" onclick="vchSave()">حفظ السند</button>${k=='exchange'?'':'<div class=m>السند بالدولار يمرّ تلقائياً على صندوق الدولار، وبالليرة على صندوق الليرة.</div>'}`
 }
 function vchRate(){
-  const usd=Number($('#va').value),syp=Number($('#vs').value),r=syp/usd;
-  $('#vr').value=Number.isFinite(usd)&&Number.isFinite(syp)&&usd>0&&syp>0&&Number.isFinite(r)&&r>0?String(r):'';
+ const u=Number($('#va').value),b=Number($('#vs').value),r=b/u;
+ $('#vr').value=Number.isFinite(u)&&Number.isFinite(b)&&u>0&&b>0&&Number.isFinite(r)&&r>0?String(r):'';
 }
-function vchExchangeLabels(){
-  const buy=$('#vdir').value==='buy';
-  $('#vul').textContent=buy?'مبلغ الدولار المشتَرى':'مبلغ الدولار المدفوع';
-  $('#vsl').textContent=buy?'مبلغ الليرة المدفوع':'مبلغ الليرة المشتراة (المستلمة)';vchRate();
-}
+function vchExchangeLabels(){const buy=$('#vdir').value==='buy';$('#vul').textContent=buy?'مبلغ الدولار المشتَرى':'مبلغ الدولار المدفوع';$('#vsl').textContent=buy?'مبلغ الليرة المدفوع':'مبلغ الليرة المستلمة';vchRate()}
 async function vchSave(){
   const k=$('#vk').value,a=+$('#va').value;
-  if(!Number.isFinite(a)||!(a>0))return toast('أدخل مبلغاً صحيحاً أكبر من صفر');
+  if(!(a>0))return toast('أدخل المبلغ');
   let r;
   if(k=='exchange'){
-    const syp=Number($('#vs').value),rt=syp/a;
-    if(!Number.isFinite(syp)||syp<=0||!Number.isFinite(rt)||rt<=0)return toast('أدخل مبلغي العملتين بقيم صحيحة أكبر من صفر');
+    const base=Number($('#vs').value),rt=base/a;if(!Number.isFinite(a)||!Number.isFinite(base)||base<=0||!Number.isFinite(rt)||rt<=0)return toast('أدخل مبلغي العملتين بقيم صحيحة أكبر من صفر');
     r=await call('post_exchange',{p_shop:S.shop.id,p_client:uid(),p_direction:$('#vdir').value,p_usd:a,p_rate:rt},true)
   }else if(k=='expense'){
     const cu=$('#vcu').value;
