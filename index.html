@@ -361,7 +361,7 @@ const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(
 function dlg(o){return new Promise(res=>{
   const prev=document.activeElement,F=o.fields||[],bg=document.createElement('div');bg.className='dlg-bg';
   const fh=F.map((f,i)=>{const id='dF'+i,lab=f.label?`<label for=${id}>${esc(f.label)}</label>`:'';
-    if(f.checks)return lab+`<div style="max-height:45vh;overflow:auto;display:grid;gap:8px">${f.checks.map(([v,l])=>`<label style="display:flex;align-items:center;gap:10px;padding:8px"><input type=checkbox name="${id}" value="${esc(v)}" ${(f.val||[]).includes(v)?'checked':''} style="width:20px;height:20px;margin:0"><span>${esc(l)}</span></label>`).join('')}</div>`;
+    if(f.checks)return lab+`<div style="max-height:45vh;overflow:auto;display:grid;gap:8px">${f.checks.map(([v,l])=>`<label style="display:flex;gap:10px;align-items:center;padding:8px"><input type=checkbox name="${id}" value="${esc(v)}" ${(f.val||[]).includes(v)?'checked':''} style="width:20px;height:20px;margin:0"><span>${esc(l)}</span></label>`).join('')}</div>`;
     if(f.area)return lab+`<textarea id=${id} rows=${f.rows||7} style="resize:vertical;line-height:1.7">${esc(f.val??'')}</textarea>`;
     if(f.opts)return lab+`<select id=${id}>${f.opts.map(([v,l])=>`<option value="${esc(v)}"${String(v)==String(f.val??'')?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
     return lab+`<input id=${id} ${f.num?'inputmode=decimal dir=ltr':f.tel?'type=tel dir=ltr':f.ltr?'dir=ltr':''} value="${esc(f.val??'')}" placeholder="${esc(f.ph||'')}" autocomplete=off ${o.title&&!f.label?`aria-label="${esc(o.title)}"`:''}>`}).join('');
@@ -373,10 +373,10 @@ function dlg(o){return new Promise(res=>{
   document.body.appendChild(bg);document.body.classList.add('lock');
   requestAnimationFrame(()=>requestAnimationFrame(()=>bg.classList.add('in')));
   const cv=o.one?true:null;let done=0;
-  const close=v=>{if(done)return;done=1;bg.classList.remove('in');document.removeEventListener('keydown',kd,true);
+  const close=v=>{if(done)return;done=1;bg.querySelectorAll('button').forEach(b=>b.disabled=true);bg.classList.remove('in');document.removeEventListener('keydown',kd,true);
     setTimeout(()=>{bg.remove();if(!document.querySelector('.dlg-bg'))document.body.classList.remove('lock');try{prev&&prev.focus&&prev.focus()}catch(e){}},200);res(v)};
   const vals=()=>{const r={};F.forEach((f,i)=>{if(f.checks){r[f.k??i]=[...bg.querySelectorAll('input[name="dF'+i+'"]:checked')].map(x=>x.value);return}let v=bg.querySelector('#dF'+i).value;if(f.num)v=toEn(v);r[f.k??i]=v});return r};
-  bg.querySelector('form').onsubmit=e=>{e.preventDefault();if(o.choices)return;const v=vals();
+  bg.querySelector('form').onsubmit=e=>{e.preventDefault();if(done||o.choices)return;const v=vals();
     if(o.check){const m=o.check(v);if(m){bg.querySelector('.dlg-err').textContent=m;const fi=bg.querySelector('input');fi&&fi.focus();return}}
     close(F.length?v:true)};
   bg.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>close(o.choices[+b.dataset.v][0]));
@@ -419,15 +419,11 @@ const delta=(a,b)=>{if(!b)return '';const p=Math.round((a-b)/Math.abs(b)*100);re
 const kpi=(icn,l,v,sub,neg)=>`<div class=kpi><div class=kl>${ic(icn,16)}${l}</div><div class="kv ${neg?'neg':''}">${v}</div><div class=ks>${sub||''}</div></div>`;
 const HOME_FIXED=['sale','buy','debt','rcv'];
 const homeShortcutKey=()=> 'home_shortcuts:'+String(S.shop?.id||'');
-function shortcutIds(){
-  let a=[];try{const v=JSON.parse(localStorage.getItem(homeShortcutKey())??localStorage.getItem('home_shortcuts')??'[]');if(Array.isArray(v))a=v}catch(e){}
-  return [...new Set([...HOME_FIXED,...a])].filter(k=>typeof k==='string'&&k!=='home'&&Object.prototype.hasOwnProperty.call(TABS,k)).slice(0,12);
-}
+function shortcutIds(){let a=[];try{const v=JSON.parse(localStorage.getItem(homeShortcutKey())??localStorage.getItem('home_shortcuts')??'[]');if(Array.isArray(v))a=v}catch(e){}return [...new Set([...HOME_FIXED,...a])].filter(k=>typeof k==='string'&&k!=='home'&&Object.prototype.hasOwnProperty.call(TABS,k)).slice(0,12)}
 async function shortcutManager(){
-  const opts=Object.keys(TABS).filter(k=>k!=='home'&&!HOME_FIXED.includes(k)&&tabOk(k)).map(k=>[k,TABS[k]]);
-  const f=await dlg({title:'اختصارات الشاشة الرئيسية',icon:'home',yes:'حفظ',msg:'فاتورة البيع، فاتورة الشراء، الديون، والقبض والدفع اختصارات ثابتة حسب الصلاحيات. اختر حتى 8 اختصارات إضافية.',fields:[{k:'ids',label:'اختصارات إضافية',checks:opts,val:shortcutIds()}],check:v=>v.ids.length>8?'الحد الأقصى 8 اختصارات إضافية':''});
-  if(!f)return;try{localStorage.setItem(homeShortcutKey(),JSON.stringify(f.ids))}catch(e){toast('تعذر حفظ الاختصارات');return}
-  if(S.tab==='home')homeV();toast('تم حفظ الاختصارات ✓');
+ const opts=Object.keys(TABS).filter(k=>k!=='home'&&!HOME_FIXED.includes(k)&&tabOk(k)).map(k=>[k,TABS[k]]);
+ const f=await dlg({title:'اختصارات الشاشة الرئيسية',icon:'home',yes:'حفظ',msg:'البيع والشراء والديون والقبض والدفع اختصارات ثابتة حسب الصلاحيات. اختر حتى 8 إضافية.',fields:[{k:'ids',label:'اختصارات إضافية',checks:opts,val:shortcutIds()}],check:v=>v.ids.length>8?'الحد الأقصى 8 إضافية':''});
+ if(!f)return;try{localStorage.setItem(homeShortcutKey(),JSON.stringify(f.ids))}catch(e){toast('تعذر حفظ الاختصارات');return}if(S.tab==='home')homeV();toast('تم حفظ الاختصارات ✓');
 }
 async function homeV(){
   const tk=++HT,rp=can('reports'),dbt=rp||can('vouchers'),sl=can('sell'),on=navigator.onLine,alive=()=>tk===HT&&S.tab=='home';
@@ -533,7 +529,7 @@ function optStock(fn,a){
 }
 async function call(fn,args,q){
   if(/^(post_|record_)/.test(fn)&&!args.p_date)args.p_date=today();
-  const enqueue=()=>{const Q=qGet();Q.push({fn,args,meta:qMeta(fn,args)});qSet(Q);optStock(fn,args);return null};
+  const enqueue=()=>{const Q=qGet();if(args.p_client&&Q.some(x=>x.fn===fn&&x.args?.p_shop===args.p_shop&&x.args?.p_client===args.p_client))return null;Q.push({fn,args,meta:qMeta(fn,args)});qSet(Q);optStock(fn,args);return null};
   if(q&&!navigator.onLine)return enqueue();
   const {data,error}=await db.rpc(fn,args).then(r=>r,e=>({error:e}));
   if(!error){if(/^(post_|record_|void_|edit_)/.test(fn))setTimeout(()=>cashBar(true),300);return data||1}
@@ -645,7 +641,8 @@ function newShopView(){
   <div class=card><div class=m>إذا كنت كاشيراً: اطلب من المالك إضافة إيميلك، ثم اضغط تحديث.</div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="load()">تحديث</button></div></main>`
 }
-async function mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
+async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
+async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
 const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
@@ -685,21 +682,24 @@ async function currencyV(){
   ${L.map(c=>`<div class=it><span><b>${esc(c.name)}</b><br><span class=m>${esc(c.code)} · ${c.code==='SYP'?'عملة الأساس':c.code==='USD'?'تُحدّث من سعر الدولار أعلى النظام':'سعر الوحدة بالليرة'}</span></span><span style="text-align:end"><b>${fmt(c.code==='USD'?S.shop.usd_rate:c.rate_to_syp)}</b><br>${c.code==='SYP'?'<span class=m>ثابتة</span>':`<button class="b s" style="padding:5px 9px" onclick="currencyEdit('${esc(c.id||c.code)}')">تعديل</button> ${c.code==='USD'?'':`<button class="b s neg" style="padding:5px 9px" onclick="currencyDisable('${esc(c.id)}')">تعطيل</button>`}`}</span></div>`).join('')}
   </div>`;
 }
-async function currencyForm(){
+async function currencyForm(...args){return runMutationOnce('currencyForm',()=>_once_currencyForm(...args))}
+async function _once_currencyForm(){
   const f=await dlg({title:'إضافة عملة',icon:'dollar',yes:'إضافة',fields:[{k:'code',label:'رمز العملة (مثلاً EUR)',val:'',ltr:true},{k:'name',label:'اسم العملة'},{k:'rate',label:'سعر وحدة العملة بالليرة السورية',num:true}],check:v=>/^[A-Z]{3,5}$/.test(v.code.trim().toUpperCase())&&v.name.trim()&&+v.rate>0?'':'أدخل رمزاً من 3 إلى 5 أحرف واسم العملة وسعراً صحيحاً أكبر من صفر'});
   if(!f)return;const code=f.code.trim().toUpperCase();
   const {error}=await db.from('shop_currencies').insert({shop_id:S.shop.id,code,name:f.name.trim(),rate_to_syp:+f.rate,is_active:true});
   if(error)return toast(error.code==='23505'?'رمز العملة موجود مسبقاً':error.message);
   await refresh();currencyV();toast('تمت إضافة العملة ✓')
 }
-async function currencyDisable(id){
+async function currencyDisable(...args){return runMutationOnce('currencyDisable',()=>_once_currencyDisable(...args))}
+async function _once_currencyDisable(id){
   const c=(S.currencies||[]).find(x=>x.id===id);if(!c)return;
   if(S.prods.some(p=>p.sale_currency===c.code))return toast('لا يمكن تعطيل هذه العملة لأنها مستخدمة في بطاقات مواد. غيّر عملة المواد أولاً.');
   if(!await ok('تعطيل العملة '+c.code+'؟',{danger:true,yes:'تعطيل'}))return;
   const {error}=await db.from('shop_currencies').update({is_active:false}).eq('id',id).eq('shop_id',S.shop.id);
   if(error)return toast(error.message);await refresh();currencyV();toast('تم تعطيل العملة')
 }
-async function currencyEdit(id){
+async function currencyEdit(...args){return runMutationOnce('currencyEdit',()=>_once_currencyEdit(...args))}
+async function _once_currencyEdit(id){
   const c=(S.currencies||[]).find(x=>x.id===id||x.code===id);if(!c)return;
   if(c.code==='SYP')return;
   const f=await dlg({title:'تعديل '+c.name,icon:'dollar',yes:'حفظ',fields:[{k:'name',label:'اسم العملة',val:c.name},{k:'rate',label:'سعر وحدة العملة بالليرة السورية',num:true,val:c.code==='USD'?S.shop.usd_rate:c.rate_to_syp}] ,check:v=>v.name.trim()&&+v.rate>0?'':'أدخل اسماً وسعراً صحيحاً'});
@@ -746,7 +746,8 @@ function pmCh(){
   $('#paid').style.display=pm=='part'?'':'none';
   $('#pt').style.borderColor=(pm!='cash'&&!$('#pt').value)?'var(--r)':'';optSum();chgV()
 }
-async function newPartner(){
+async function newPartner(...args){return runMutationOnce('newPartner',()=>_once_newPartner(...args))}
+async function _once_newPartner(){
   const sale=S.mode=='sale',f=await dlg({title:sale?'زبون جديد':'مورد جديد',icon:'users',yes:'إضافة',fields:[{k:'n',label:'الاسم'},{k:'ph',label:'رقم الهاتف (اختياري)',tel:true},{k:'tier',label:'فئة سعر البيع',val:'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:'SYP',opts:curDlgOptions()}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'';
   const {data,error}=await db.from('partners').insert({shop_id:S.shop.id,name:n.trim(),phone:ph.trim()||null,kind:sale?'customer':'supplier',price_tier:f.tier||'retail',account_currency:f.currency||'SYP'}).select('id').single();
@@ -821,20 +822,8 @@ function cartV(){
     if(S.pop==b.dataset.id){b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop')}});
   S.pop=null
 }
-let invoiceSaving=false;
-async function post(){
-  if(invoiceSaving){toast('جارٍ حفظ الفاتورة؛ انتظر اكتمال العملية');return}
-  invoiceSaving=true;
-  const btn=document.querySelector('#pbtn'),oldText=btn?.textContent,oldDisabled=btn?.disabled;
-  if(btn){btn.disabled=true;btn.textContent='جارٍ الحفظ...';btn.setAttribute('aria-busy','true')}
-  try{return await postInvoiceOnce()}
-  catch(e){console.error('Invoice save failed',e);toast('تعذر إكمال الحفظ. تحقق من الفواتير والعمليات المعلّقة قبل إعادة المحاولة.');}
-  finally{
-    invoiceSaving=false;
-    if(btn&&btn.isConnected){btn.disabled=oldDisabled;btn.textContent=oldText;btn.removeAttribute('aria-busy')}
-  }
-}
-async function postInvoiceOnce(){
+async function post(...args){return runMutationOnce('post',()=>_once_post(...args))}
+async function _once_post(){
   if(!S.cart.length)return toast('الفاتورة فارغة');
   if(S.mode=='open')return postOpen();
   const sale=S.mode=='sale',t=tot(),pm=$('#pm').value;
@@ -890,23 +879,27 @@ function stockList(){
   const q=($('#sq').value||'').trim().toLowerCase();
   $('#sl').innerHTML=S.prods.filter(p=>!q||p.name.toLowerCase().includes(q)).map(p=>`<div class=it onclick="adjust('${p.id}')"><span>${esc(p.name)}<br><span class=m>الإجمالي بكل المستودعات ${fmt(p.stock_qty)}</span></span><b>${fmt(lvl(p.id,S.wh))}</b></div>`).join('')||'<div class=m>لا نتائج</div>'
 }
-async function adjust(id){
+async function adjust(...args){return runMutationOnce('adjust',()=>_once_adjust(...args))}
+async function _once_adjust(id){
   const p=S.prods.find(x=>x.id==id),cur=lvl(id,S.wh),v=await ask('جرد: '+p.name,cur,{msg:'الكمية الفعلية بهذا المستودع (المسجّل بالنظام: '+fmt(cur)+')',num:true,icon:'stock',yes:'حفظ'});
   if(v===null||v===''||isNaN(+v)||+v<0)return;
   const r=await call('post_stock_adjust_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:+v,p_reason:'جرد'});
   if(r!==undefined){await refresh();toast('تمت التسوية ✓');stockV()}
 }
-async function addWh(){
+async function addWh(...args){return runMutationOnce('addWh',()=>_once_addWh(...args))}
+async function _once_addWh(){
   const n=await ask('مستودع جديد','',{ph:'اسم المستودع',icon:'stock',yes:'إضافة'});if(!n||!n.trim())return;
   const r=await call('add_warehouse',{p_shop:S.shop.id,p_name:n});
   if(r!==undefined){await refresh();toast('تمت الإضافة ✓');stockV()}
 }
-async function doTransfer(){
+async function doTransfer(...args){return runMutationOnce('doTransfer',()=>_once_doTransfer(...args))}
+async function _once_doTransfer(){
   const q=+$('#tq').value;if(!(q>0))return toast('أدخل الكمية');
   const r=await call('transfer_stock',{p_shop:S.shop.id,p_client:uid(),p_product:$('#tp').value,p_from:$('#tf').value,p_to:$('#tt').value,p_qty:q});
   if(r!==undefined){await refresh();toast('تم التحويل ✓');stockV()}
 }
-async function postOpen(){
+async function postOpen(...args){return runMutationOnce('postOpen',()=>_once_postOpen(...args))}
+async function _once_postOpen(){
   const r=await call('post_opening_stock_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_currency:S.cur,p_rate:rate(S.cur),p_items:S.cart.map(i=>({product_id:i.id,qty:i.qty,unit_cost:i.price}))},true);
   if(r===undefined)return;
   S.cart=[];await refresh();toast('تم تسجيل المخزون الافتتاحي ✓');go('stock')
@@ -939,7 +932,8 @@ async function supplierPricesV(id){
   ${rows.map(x=>`<div class=it><span>${esc(x.products?.name||'مادة')}<br><span class=m>${fmt(x.unit_price)} ${esc(x.currency)}</span></span><button class="b s" onclick="supplierPriceEdit('${id}','${x.id}')">تعديل</button></div>`).join('')||'<div class=empty>لا توجد أسعار خاصة لهذا المورد بعد</div>'}
   <button class="b s" style="width:100%;margin-top:8px" onclick="partnerV('${id}')">رجوع</button></div>`
 }
-async function supplierPriceAdd(id,oldId){
+async function supplierPriceAdd(...args){return runMutationOnce('supplierPriceAdd',()=>_once_supplierPriceAdd(...args))}
+async function _once_supplierPriceAdd(id,oldId){
   const old=oldId?(S.supplierPriceRows||[]).find(x=>x.id===oldId):null;
   const opts=S.prods.map(x=>[x.id,x.name]);
   const f=await dlg({title:old?'تعديل سعر شراء':'سعر شراء جديد',icon:'buy',yes:'حفظ',fields:[{k:'product',label:'المادة',val:old?.product_id||'',opts},{k:'price',label:'سعر الشراء',num:true,val:old?.unit_price||''},{k:'currency',label:'عملة السعر',val:old?.currency||'SYP',opts:curDlgOptions()}],check:v=>v.product&&+v.price>0?'':'اختر المادة وأدخل سعراً صحيحاً'});if(!f)return;
@@ -947,12 +941,14 @@ async function supplierPriceAdd(id,oldId){
   const q=old?db.from('supplier_product_prices').update(payload).eq('id',old.id):db.from('supplier_product_prices').upsert(payload,{onConflict:'shop_id,partner_id,product_id'});
   const {error}=await q;if(error)return toast(error.message);supplierPricesV(id);toast('تم حفظ سعر المورد ✓')
 }
-async function supplierPriceEdit(id,rowId){
+async function supplierPriceEdit(...args){return runMutationOnce('supplierPriceEdit',()=>_once_supplierPriceEdit(...args))}
+async function _once_supplierPriceEdit(id,rowId){
   const {data,error}=await db.from('supplier_product_prices').select('id,product_id,currency,unit_price').eq('id',rowId).single();if(error)return toast(error.message);
   S.supplierPriceRows=[data];await supplierPriceAdd(id,rowId)
 }
 
-async function openBal(id){
+async function openBal(...args){return runMutationOnce('openBal',()=>_once_openBal(...args))}
+async function _once_openBal(id){
   const p=S.parts.find(x=>x.id==id);let side=p.kind;
   if(side=='both'){side=await dlg({title:'نوع الرصيد الافتتاحي',msg:'هذا الطرف زبون ومورد معاً.',icon:'users',choices:[['customer','رصيد لنا عليه (كزبون)'],['supplier','رصيد له علينا (كمورد)']]});if(!side)return}
   const f=await askAmt('الرصيد الافتتاحي',{msg:side=='customer'?'مبلغ مستحق لنا عليه':'مبلغ مستحق علينا له',icon:'wallet',yes:'تسجيل'});if(!f)return;
@@ -960,13 +956,15 @@ async function openBal(id){
   const r=await call('post_opening_balance',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_side:side,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
   if(r!==undefined){toast('تم ✓');partnerV(id)}
 }
-async function offsetP(id,max){
+async function offsetP(...args){return runMutationOnce('offsetP',()=>_once_offsetP(...args))}
+async function _once_offsetP(id,max){
   if(!(max>0))return toast('لا يوجد رصيدان متقابلان للمقاصة (لا بد أن يكون له علينا ولنا عليه)');
   const a=await ask('مقاصة الرصيد',max,{msg:'مبلغ المقاصة بالليرة (حتى '+fmt(max)+')',num:true,icon:'wallet',yes:'تنفيذ المقاصة'});if(!a||!(+a>0))return;
   const r=await call('post_offset',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_amount:+a});
   if(r!==undefined){toast('تمت المقاصة ✓');partnerV(id)}
 }
-async function editPartner(id){
+async function editPartner(...args){return runMutationOnce('editPartner',()=>_once_editPartner(...args))}
+async function _once_editPartner(id){
   const p=S.parts.find(x=>x.id==id);
   const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:p.account_currency||'SYP',opts:curDlgOptions()}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'',k=f.k;
@@ -988,7 +986,8 @@ async function memoV(){
   ${S.notes.length?S.notes.map(n=>`<div class=it style="align-items:flex-start;gap:12px"><label style="display:flex;align-items:flex-start;gap:8px;flex:1;margin:0"><input type=checkbox ${n.is_done?'checked':''} onchange="memoToggle('${n.id}',this.checked)" style="margin-top:6px"><span style="min-width:0"><b style="${n.is_done?'text-decoration:line-through;color:var(--m)':''}">${esc(n.title)}</b>${n.body?`<div class=m style="white-space:pre-wrap">${esc(n.body)}</div>`:''}<span class=m>${n.due_date?'موعد: '+esc(n.due_date)+' · ':''}${n.is_done?'منجزة':'قيد المتابعة'}</span></span></label><span style="display:flex;gap:5px"><button class="b s" style="padding:5px 8px" onclick="memoForm('${n.id}')">تعديل</button><button class="b s neg" style="padding:5px 8px" onclick="memoDelete('${n.id}')">حذف</button></span></div>`).join(''):'<div class=empty>المفكرة فارغة. أضف أول ملاحظة أو مهمة.</div>'}
   </div>`
 }
-async function memoForm(id){
+async function memoForm(...args){return runMutationOnce('memoForm',()=>_once_memoForm(...args))}
+async function _once_memoForm(id){
   const n=(S.notes||[]).find(x=>x.id===id)||{};
   const f=await dlg({title:id?'تعديل ملاحظة':'ملاحظة جديدة',icon:'memo',yes:'حفظ',fields:[{k:'title',label:'العنوان',val:n.title||''},{k:'body',label:'التفاصيل',area:true,rows:5,val:n.body||''},{k:'due',label:'تاريخ التذكير (اختياري)',val:n.due_date||''}],check:v=>v.title.trim()?'':'اكتب عنوان الملاحظة'});
   if(!f)return;
@@ -996,11 +995,13 @@ async function memoForm(id){
   const q=id?db.from('shop_notes').update(payload).eq('id',id).eq('shop_id',S.shop.id):db.from('shop_notes').insert(payload);
   const {error}=await q;if(error)return toast(error.message);memoV();toast('تم حفظ الملاحظة ✓')
 }
-async function memoToggle(id,done){
+async function memoToggle(...args){return runMutationOnce('memoToggle',()=>_once_memoToggle(...args))}
+async function _once_memoToggle(id,done){
   const {error}=await db.from('shop_notes').update({is_done:!!done}).eq('id',id).eq('shop_id',S.shop.id);
   if(error)return toast(error.message);memoV()
 }
-async function memoDelete(id){
+async function memoDelete(...args){return runMutationOnce('memoDelete',()=>_once_memoDelete(...args))}
+async function _once_memoDelete(id){
   if(!await ok('حذف هذه الملاحظة؟',{danger:true,icon:'trash',yes:'حذف'}))return;
   const {error}=await db.from('shop_notes').delete().eq('id',id).eq('shop_id',S.shop.id);
   if(error)return toast(error.message);memoV();toast('تم الحذف')
@@ -1034,7 +1035,8 @@ function addAcctForm(cash){
   <button class=b style="width:100%;margin-top:6px" onclick="saveAcct(${cash})">حفظ</button></div>`;
   $('#af').scrollIntoView()
 }
-async function saveAcct(cash){
+async function saveAcct(...args){return runMutationOnce('saveAcct',()=>_once_saveAcct(...args))}
+async function _once_saveAcct(cash){
   const r=await call('add_account',{p_shop:S.shop.id,p_code:$('#ac').value,p_name:$('#an2').value,p_type:$('#aty').value,p_parent:$('#apar').value||null,p_group:!!($('#agr')&&$('#agr').checked),p_cashbox:!!cash});
   if(r!==undefined){toast('تمت الإضافة ✓');acctV()}
 }
@@ -1052,11 +1054,13 @@ function editAcctForm(){
   $('#af').innerHTML=`<input id=ec value="${esc(a.code)}" placeholder="رقم الحساب"><input id=en2 value="${esc(a.name)}" placeholder="الاسم">
   <select id=ep2><option value="">بدون حساب أب${par}</select><button class=b style="width:100%" onclick="saveEditAcct()">حفظ التعديل</button>`
 }
-async function saveEditAcct(){
+async function saveEditAcct(...args){return runMutationOnce('saveEditAcct',()=>_once_saveEditAcct(...args))}
+async function _once_saveEditAcct(){
   const a=S.ca,r=await call('update_account',{p_shop:S.shop.id,p_id:a.id,p_code:$('#ec').value,p_name:$('#en2').value,p_parent:$('#ep2').value||null});
   if(r!==undefined){toast('تم الحفظ ✓');acctV()}
 }
-async function delAcct(){
+async function delAcct(...args){return runMutationOnce('delAcct',()=>_once_delAcct(...args))}
+async function _once_delAcct(){
   const a=S.ca;if(!await ok('حذف الحساب '+a.name+'؟',{danger:true,icon:'trash',yes:'حذف'}))return;
   const r=await call('delete_account',{p_shop:S.shop.id,p_id:a.id});
   if(r!==undefined){toast('تم الحذف');acctV()}
@@ -1068,7 +1072,8 @@ function importForm(){
   <button class=b style="width:100%;margin-top:6px" onclick="doImport()">استيراد</button></div>`;
   $('#af').scrollIntoView()
 }
-async function doImport(){
+async function doImport(...args){return runMutationOnce('doImport',()=>_once_doImport(...args))}
+async function _once_doImport(){
   const rows=$('#imp').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const [code,name,type,parent]=l.split(/[;\t]/).map(x=>(x||'').trim());return {code,name,type,parent}});
   if(!rows.length)return toast('الصق الدليل أولاً');
   const r=await call('import_accounts',{p_shop:S.shop.id,p_rows:rows});
@@ -1085,7 +1090,8 @@ function voucherForm(kind){
   <input id=vn placeholder="البيان (اختياري)"><button class=b style="width:100%" onclick="saveVoucher()">حفظ</button></div>`;
   $('#af').scrollIntoView()
 }
-async function saveVoucher(){
+async function saveVoucher(...args){return runMutationOnce('saveVoucher',()=>_once_saveVoucher(...args))}
+async function _once_saveVoucher(){
   const cur=$('#vcur').value;
   const r=await call('post_voucher',{p_shop:S.shop.id,p_client:uid(),p_debit:$('#vd').value,p_credit:$('#vc').value,p_amount:+$('#va').value,p_currency:cur,p_rate:rate(cur),p_desc:$('#vn').value});
   if(r!==undefined){toast('تم ✓');acctV()}
@@ -1269,12 +1275,14 @@ async function prodList(){
   const el=$('#pl');if(!el)return;
   el.innerHTML='<b>آخر أوامر التصنيع</b>'+((data||[]).map(o=>`<div class=it><span>${esc(pname(o.product_id))} × ${fmt(o.qty)}<br><span class=m>${o.prod_date} · التكلفة ${fmt(o.total_cost)}</span></span>${o.voided_at?'<span class="neg strike">ملغى</span>':`<button class="b s neg" style="flex:0" onclick="voidProd('${o.id}')">إلغاء</button>`}</div>`).join('')||'<div class=m>لا أوامر بعد</div>')
 }
-async function voidProd(id){
+async function voidProd(...args){return runMutationOnce('voidProd',()=>_once_voidProd(...args))}
+async function _once_voidProd(id){
   if(!await ok('إلغاء أمر التصنيع؟',{msg:'سترجع المواد الخام ويُسحب المنتج الجاهز من المستودع.',danger:true,yes:'إلغاء الأمر',no:'رجوع'}))return;
   const r=await call('void_production',{p_shop:S.shop.id,p_order:id});
   if(r!==undefined){await refresh();toast('تم إلغاء أمر التصنيع ✓');mfgV()}
 }
-async function doProd(){
+async function doProd(...args){return runMutationOnce('doProd',()=>_once_doProd(...args))}
+async function _once_doProd(){
   const id=$('#mp').value,q=+$('#mq').value;
   if(!id||!(q>0))return toast('اختر المنتج وأدخل الكمية');
   const r=await call('post_production',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_qty:q,p_extra:+$('#mx').value||0});
@@ -1293,7 +1301,8 @@ function rcpAdd(){
   const e=S.rc.find(x=>x.id==id);e?e.qty+=q:S.rc.push({id,qty:q});
   $('#rcq').value='';rcpDraw()
 }
-async function rcpSave(){
+async function rcpSave(...args){return runMutationOnce('rcpSave',()=>_once_rcpSave(...args))}
+async function _once_rcpSave(){
   const r=await call('set_bom',{p_shop:S.shop.id,p_product:$('#rp').value,p_items:S.rc.map(x=>({component_id:x.id,qty:x.qty}))});
   if(r!==undefined){await refresh();toast('تم حفظ الوصفة ✓');mfgV()}
 }
@@ -1511,20 +1520,24 @@ async function teamV(){
     ${permBoxes(pre,m.perms||[])}
     <button class=b style="width:100%;margin-top:6px" onclick="saveMP('${m.user_id}')">حفظ الصلاحيات</button></details></div>`}).join('')}`
 }
-async function setMW(u,w){
+async function setMW(...args){return runMutationOnce('setMW',()=>_once_setMW(...args))}
+async function _once_setMW(u,w){
   const r=await call('set_member_wh',{p_shop:S.shop.id,p_user:u,p_wh:w||null});
   if(r!==undefined)toast('تم الحفظ ✓')
 }
-async function addCashier(){
+async function addCashier(...args){return runMutationOnce('addCashier',()=>_once_addCashier(...args))}
+async function _once_addCashier(){
   const e=$('#ce').value.trim();if(!e)return toast('اكتب إيميل المستخدم');
   const r=await call('add_cashier',{p_shop:S.shop.id,p_email:e,p_perms:permSel('np')});
   if(r!==undefined){toast('تمت الإضافة ✓');teamV()}
 }
-async function saveMP(u){
+async function saveMP(...args){return runMutationOnce('saveMP',()=>_once_saveMP(...args))}
+async function _once_saveMP(u){
   const r=await call('set_member_perms',{p_shop:S.shop.id,p_user:u,p_perms:permSel('mp'+u.slice(0,8))});
   if(r!==undefined){toast('تم حفظ الصلاحيات ✓');teamV()}
 }
-async function rmMember(u){
+async function rmMember(...args){return runMutationOnce('rmMember',()=>_once_rmMember(...args))}
+async function _once_rmMember(u){
   if(!await ok('إزالة هذا المستخدم؟',{danger:true,icon:'trash',yes:'إزالة'}))return;
   const r=await call('remove_member',{p_shop:S.shop.id,p_user:u});
   if(r!==undefined)teamV()
@@ -1566,7 +1579,8 @@ function editInv(k){
   S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
-async function voidInv(k){
+async function voidInv(...args){return runMutationOnce('voidInv',()=>_once_voidInv(...args))}
+async function _once_voidInv(k){
   const x=S.hist[k];
   if(!await ok('إلغاء هذه الفاتورة؟',{msg:'سيُعاد المخزون وتُسجَّل قيود عكسية.',danger:true,yes:'إلغاء الفاتورة',no:'رجوع'}))return;
   const r=await call('void_invoice',{p_shop:S.shop.id,p_kind:x.kind,p_id:x.id});
@@ -1594,7 +1608,8 @@ function prodV(){
   <div class=m>اضغط على المادة لتعديلها أو حذفها. الأسعار الثلاثة بعملة المادة المحددة.</div></div>`
 }
 const dupMsg=e=>e.code=='23505'?'هذا الباركود مسجّل لمنتج آخر':e.message;
-async function addProd(){
+async function addProd(...args){return runMutationOnce('addProd',()=>_once_addProd(...args))}
+async function _once_addProd(){
   const n=$('#pn').value.trim();if(!n)return toast('الاسم مطلوب');
   if(S.prods.some(p=>p.name==n)&&!await ok('يوجد منتج بنفس الاسم',{msg:'هل تريد إضافة منتج آخر بنفس الاسم؟',icon:'alert',yes:'إضافة'}))return;
   if($('#pp').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#pp').value,semi=$('#psp').value.trim()===''?null:+$('#psp').value,whole=$('#pwp').value.trim()===''?null:+$('#pwp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
@@ -1611,14 +1626,16 @@ function editP(id){
   <div class=row><button class=b onclick="saveP('${p.id}')">حفظ</button><button class="b s" onclick="prodV()">رجوع</button></div>
   <button class="b s neg" style="width:100%;margin-top:8px" onclick="delP('${p.id}')">حذف المادة</button></div>`
 }
-async function saveP(id){
+async function saveP(...args){return runMutationOnce('saveP',()=>_once_saveP(...args))}
+async function _once_saveP(id){
   const n=$('#en').value.trim();if(!n)return toast('الاسم مطلوب');
   if($('#ep').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#ep').value,semi=$('#esp').value.trim()===''?null:+$('#esp').value,whole=$('#ewp').value.trim()===''?null:+$('#ewp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
   const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,min_stock:+$('#ei').value||0}).eq('id',id);
   if(error)return toast(dupMsg(error));
   await refresh();prodV();toast('تم الحفظ ✓')
 }
-async function delP(id){
+async function delP(...args){return runMutationOnce('delP',()=>_once_delP(...args))}
+async function _once_delP(id){
   const p=S.prods.find(x=>x.id==id);
   if(!await ok('حذف "'+p.name+'"؟',{msg:(p.stock_qty>0?'انتبه: له مخزون '+fmt(p.stock_qty)+' وسيختفي من القوائم.\n':'')+'الفواتير القديمة تبقى محفوظة.',danger:true,icon:'trash',yes:'حذف'}))return;
   const {error}=await db.from('products').update({active:false,barcode:null}).eq('id',id);
@@ -1694,7 +1711,8 @@ async function remind(id){
   const q=rlQ();q.push({p:id,t:now,a:b.r});localStorage['rlq'+S.shop.id]=JSON.stringify(q);rlFlush();
   document.querySelectorAll(`[data-rl="${id}"]`).forEach(e=>{e.textContent=rlTxt(id);e.classList.add('sent')});
 }
-async function watEdit(){
+async function watEdit(...args){return runMutationOnce('watEdit',()=>_once_watEdit(...args))}
+async function _once_watEdit(){
   const f=await dlg({title:'نص رسالة التذكير',icon:'wa',yes:'حفظ',msg:'الكلمات بين القوسين تُستبدل تلقائياً:\n{الاسم} · {المبلغ} · {المحل} · {التاريخ} · {هاتف_المحل}\nاترك النص فارغاً للعودة للنص الافتراضي.',fields:[{k:'t',area:true,val:watGet()}],check:v=>!v.t.trim()||v.t.includes('{المبلغ}')?'':'يجب أن يحتوي النص على {المبلغ}'});
   if(!f)return;let t=f.t.trim();if(t==WAT0)t='';
   const r=await call('set_wa_template',{p_shop:S.shop.id,p_text:t});
@@ -1736,13 +1754,15 @@ function debtList(){
    const rl=rlTxt(p.id);
    return `<div class="it cl" onclick="partnerV('${p.id}')"><span class=dn><span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}${pp.phone?' · <span dir=ltr>'+esc(pp.phone)+'</span>':''}</span>${r>0?`<br><span class="m rl${rl?' sent':''}" data-rl="${p.id}">${rl}</span>`:''}</span></span><span class=dr><span style="text-align:end">${amt}</span>${r>0?waBtn(p.id):''}</span></div>`}).join('')||'<div class=empty>لا نتائج</div>'
 }
-async function addPart(){
+async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
+async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
   const {error}=await db.from('partners').insert({shop_id:S.shop.id,name:n,phone:$('#ap').value.trim()||null,kind:$('#ak').value,price_tier:$('#atier').value||'retail',account_currency:$('#acur').value||'SYP'});
   if(error)return toast(error.message);
   await refresh();debtV()
 }
-async function pay(id,kind){
+async function pay(...args){return runMutationOnce('pay',()=>_once_pay(...args))}
+async function _once_pay(id,kind){
   const f=await askAmt(kind=='receipt'?'قبض من الزبون':'دفع للمورد',{icon:'wallet',yes:'تسجيل'});if(!f)return;
   const a=f.a,cur=f.c;
   const r=await call('record_payment',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:kind,p_amount:+a,p_currency:cur,p_rate:rate(cur)},true);
@@ -1815,7 +1835,8 @@ async function bkCard(){
   ${S.bks.map(b=>`<div class=it><span>${K[b.kind]} · ${fdt(b.created_at)}<br><span class=m>فواتير بيع ${(b.counts||{}).sales||0} · قيود ${(b.counts||{}).journal_entries||0} · ${Math.round(b.size_bytes/1024)} KB</span></span><span style="display:flex;gap:6px"><button class="b s" style="padding:6px 10px" onclick="bkDl('${b.id}')">تنزيل</button><button class="b s neg" style="padding:6px 10px" onclick="bkRestore('${b.id}')">استرجاع</button></span></div>`).join('')}
   <div class=m style="margin-top:10px">استرجاع من ملف نسخة محفوظ على جهازك:</div><input type=file id=bkf accept=".json,application/json" onchange="bkFile(this)">`
 }
-async function bkNow(){const r=await call('create_backup',{p_shop:S.shop.id});if(r!==undefined){toast('تم إنشاء النسخة ✓');bkCard()}}
+async function bkNow(...args){return runMutationOnce('bkNow',()=>_once_bkNow(...args))}
+async function _once_bkNow(){const r=await call('create_backup',{p_shop:S.shop.id});if(r!==undefined){toast('تم إنشاء النسخة ✓');bkCard()}}
 async function bkDl(id){
   const {data,error}=await db.rpc('get_backup',{p_shop:S.shop.id,p_backup:id}).abortSignal(bsig());
   if(error)return toast(error.message);
@@ -1828,15 +1849,18 @@ async function bkAsk(label){
   if(((await ask('للتأكيد اكتب كلمة: استرجاع','',{danger:true,yes:'استرجاع',ph:'استرجاع'}))||'').trim()!=='استرجاع'){toast('تم الإلغاء');return false}
   return true
 }
-async function bkRun(fn,args){
+async function bkRun(...args){return runMutationOnce('bkRun',()=>_once_bkRun(...args))}
+async function _once_bkRun(fn,args){
   toast('جارٍ الاسترجاع... لا تغلق الصفحة');
   const {data,error}=await db.rpc(fn,args).abortSignal(bsig());
   if(error)return toast('فشل الاسترجاع ولم يتغيّر شيء: '+error.message);
   await say('تم الاسترجاع بنجاح',{msg:'فواتير البيع: '+(data.sales||0)+'\nالقيود المحاسبية: '+(data.journal_entries||0)+'\nأخذنا نسخة أمان قبل الاسترجاع، تجدها بالقائمة إن أردت التراجع.'});
   localStorage.removeItem('cache');location.reload()
 }
-async function bkRestore(id){const b=S.bks.find(x=>x.id==id);if(b&&await bkAsk('نسخة '+fdt(b.created_at)))bkRun('restore_backup',{p_shop:S.shop.id,p_backup:id,p_confirm:'استرجاع'})}
-async function bkFile(inp){
+async function bkRestore(...args){return runMutationOnce('bkRestore',()=>_once_bkRestore(...args))}
+async function _once_bkRestore(id){const b=S.bks.find(x=>x.id==id);if(b&&await bkAsk('نسخة '+fdt(b.created_at)))bkRun('restore_backup',{p_shop:S.shop.id,p_backup:id,p_confirm:'استرجاع'})}
+async function bkFile(...args){return runMutationOnce('bkFile',()=>_once_bkFile(...args))}
+async function _once_bkFile(inp){
   const f=inp.files[0];if(!f)return;
   let d;try{d=JSON.parse(await f.text())}catch(e){inp.value='';return toast('الملف غير صالح')}
   if(d&&d.version===1&&d.tables){if(await bkAsk('الملف '+f.name))bkRun('restore_from_json',{p_shop:S.shop.id,p_data:d,p_confirm:'استرجاع'})}
@@ -1896,7 +1920,8 @@ function coV(){
 }
 /* ---- تصفير الشركة وحذفها ---- */
 const pendingOps=()=>JSON.parse(localStorage.q||'[]').length;
-async function resetCo(){
+async function resetCo(...args){return runMutationOnce('resetCo',()=>_once_resetCo(...args))}
+async function _once_resetCo(){
   if(pendingOps())return toast('عندك عمليات معلّقة لم تُرحَّل بعد. انتظر ترحيلها ثم أعد المحاولة.');
   const keep=$('#kc').checked;
   if(!await ok('تصفير الشركة',{danger:true,yes:'متابعة',msg:'سيتم حذف كل الفواتير والسندات والقيود وحركات المخزون'+(keep?'، وتصفير كميات المنتجات وأرصدة الزبائن والموردين، مع الاحتفاظ بقوائم المنتجات والزبائن والموردين.':'، وكل المنتجات والزبائن والموردين والمستودعات الإضافية.')+'\n\nتبقى شجرة الحسابات وبيانات الشركة والفريق والاشتراك.\nيُحفظ قبلها نسخة أمان ترجع منها من تبويب النسخ الاحتياطي.\n\nهل تريد المتابعة؟'}))return;
@@ -1906,7 +1931,8 @@ async function resetCo(){
   localStorage.removeItem('f');S.cart=[];
   await refresh();toast('تم تصفير الشركة ✓ (للتراجع: النسخ الاحتياطي ← نسخة الأمان)');go('sale')
 }
-async function delCo(){
+async function delCo(...args){return runMutationOnce('delCo',()=>_once_delCo(...args))}
+async function _once_delCo(){
   if(pendingOps())return toast('عندك عمليات معلّقة لم تُرحَّل بعد. انتظر ترحيلها أولاً.');
   const n=await ask('حذف الشركة نهائياً','',{msg:'يُحذف ملف الشركة بكل بياناته ونسخه الاحتياطية وفريقه، ولا يمكن التراجع.\nنزّل نسخة على جهازك قبل ذلك.\n\nللتأكيد اكتب اسم الشركة بالضبط:\n'+S.shop.name,danger:true,icon:'trash',yes:'حذف نهائي',ph:S.shop.name});
   if(n===null)return;
@@ -1916,7 +1942,8 @@ async function delCo(){
   await say('تم حذف الشركة نهائياً.');location.reload()
 }
 
-async function saveCo(){
+async function saveCo(...args){return runMutationOnce('saveCo',()=>_once_saveCo(...args))}
+async function _once_saveCo(){
   const r=await call('set_shop_info',{p_shop:S.shop.id,p_address:$('#cad').value,p_phones:$('#cph').value,p_note:$('#cnt').value});
   if(r!==undefined){await refresh();toast('تم الحفظ ✓');coV()}
 }
@@ -1969,7 +1996,8 @@ function rcvCalc(){
   }
   $('#ri').textContent=t
 }
-async function rcvSave(){
+async function rcvSave(...args){return runMutationOnce('rcvSave',()=>_once_rcvSave(...args))}
+async function _once_rcvSave(){
   const id=$('#rp').value,a=+$('#ra').value,pc=$('#rpc').value,dc=$('#rdc').value,r=+$('#rr').value,fx=pc=='USD'||dc=='USD';
   if(!id)return toast('اختر الطرف');
   if(!(a>0))return toast('أدخل المبلغ');
@@ -1977,7 +2005,7 @@ async function rcvSave(){
   const res=await call('post_settlement',{p_shop:S.shop.id,p_client:uid(),p_partner:id,p_kind:S.rk,p_amount:a,p_pay_cur:pc,p_debt_cur:dc,p_rate:fx?r:1},true);
   if(res===undefined)return;
   toast(res?'تم حفظ السند ✓':'لا يوجد اتصال: حُفظ وسيُرسل تلقائياً');
-  S.rp=null;rcvV()
+  S.rp=null;await rcvV()
 }
 async function rcvLoad(){
   const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id,p_types:['receipt','payment']});
@@ -1988,7 +2016,8 @@ async function rcvLoad(){
     return `<div class=it><span>${VT[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||'')}</span><br><span class=m>${esc(v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${u?'$'+fmt(v.foreign_amount):fmt(v.amount)}</b>${u?`<br><span class=m>${fmt(v.amount)} ل.س</span>`:''}<br><button class="b s" style="padding:4px 10px" onclick="rcvPrint(${k})">🖨</button> ${v.voided?'':`<button class="b s neg" style="padding:4px 10px" onclick="rcvVoid('${v.id}')">إلغاء</button>`}</span></div>`}).join('')||'<div class=m>لا سندات بعد</div>')
 }
 function rcvPrint(k){S.vl=S.rl;vchPrint(k)}
-async function rcvVoid(id){
+async function rcvVoid(...args){return runMutationOnce('rcvVoid',()=>_once_rcvVoid(...args))}
+async function _once_rcvVoid(id){
   if(!await ok('إلغاء هذا السند؟',{msg:'سيُسجَّل قيد عكسي ويعود رصيد الطرف كما كان.',danger:true,yes:'إلغاء السند',no:'رجوع'}))return;
   const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
   if(r!==undefined){toast('تم إلغاء السند ✓');rcvV()}
@@ -2022,12 +2051,10 @@ function vchForm(){
   }
   $('#vf').innerHTML=h+`<button class=b style="width:100%;margin-top:6px" onclick="vchSave()">حفظ السند</button>${k=='exchange'?'':'<div class=m>السند بالدولار يمرّ تلقائياً على صندوق الدولار، وبالليرة على صندوق الليرة.</div>'}`
 }
-function vchRate(){
- const u=Number($('#va').value),b=Number($('#vs').value),r=b/u;
- $('#vr').value=Number.isFinite(u)&&Number.isFinite(b)&&u>0&&b>0&&Number.isFinite(r)&&r>0?String(r):'';
-}
+function vchRate(){const u=Number($('#va').value),b=Number($('#vs').value),r=b/u;$('#vr').value=Number.isFinite(u)&&Number.isFinite(b)&&u>0&&b>0&&Number.isFinite(r)&&r>0?String(r):''}
 function vchExchangeLabels(){const buy=$('#vdir').value==='buy';$('#vul').textContent=buy?'مبلغ الدولار المشتَرى':'مبلغ الدولار المدفوع';$('#vsl').textContent=buy?'مبلغ الليرة المدفوع':'مبلغ الليرة المستلمة';vchRate()}
-async function vchSave(){
+async function vchSave(...args){return runMutationOnce('vchSave',()=>_once_vchSave(...args))}
+async function _once_vchSave(){
   const k=$('#vk').value,a=+$('#va').value;
   if(!(a>0))return toast('أدخل المبلغ');
   let r;
@@ -2054,7 +2081,8 @@ async function vchLoad(){
   el.innerHTML='<b>آخر السندات</b>'+(S.vl.map((v,k)=>{const u=v.currency=='USD'&&v.foreign_amount;
     return `<div class=it><span>${VT[v.ref_type]||v.ref_type} · ${v.entry_date}<br><span class=m>${esc(v.partner_name||v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${u?'$'+fmt(v.foreign_amount):fmt(v.amount)}</b>${u?`<br><span class=m>${fmt(v.amount)} ل.س</span>`:''}<br>${['receipt','payment','expense'].includes(v.ref_type)?`<button class="b s" style="padding:4px 10px" onclick="vchPrint(${k})">🖨</button> `:''}${v.voided?'':`<button class="b s neg" style="padding:4px 10px" onclick="voidV('${v.id}')">إلغاء</button>`}</span></div>`}).join('')||'<div class=m>لا سندات بعد</div>')
 }
-async function voidV(id){
+async function voidV(...args){return runMutationOnce('voidV',()=>_once_voidV(...args))}
+async function _once_voidV(id){
   if(!await ok('إلغاء هذا السند؟',{msg:'سيُسجَّل قيد عكسي ويبقى السند الأصلي ظاهراً مشطوباً.',danger:true,yes:'إلغاء السند',no:'رجوع'}))return;
   const r=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
   if(r!==undefined){toast('تم إلغاء السند ✓');vchLoad()}
@@ -2070,13 +2098,25 @@ function vchPrint(k){
   <div style="display:flex;justify-content:space-between;margin-top:20px"><span>المستلم</span><span>المحاسب</span></div>`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());print()
 }
-async function equity(dir){
+async function equity(...args){return runMutationOnce('equity',()=>_once_equity(...args))}
+async function _once_equity(dir){
   const f=await askAmt(dir=='deposit'?'إضافة رأس مال':'سحب المالك',{icon:'wallet',yes:'تسجيل'});if(!f)return;
   const a=f.a,cu=f.c;if(!a||!(+a>0))return;
   const r=await call('record_equity',{p_shop:S.shop.id,p_client:uid(),p_amount:+a,p_currency:cu,p_rate:rate(cu),p_direction:dir},true);
   if(r!==undefined){toast('تم ✓');vchLoad()}
 }
 
+const mutationLocks=new Set();
+async function runMutationOnce(name,work){
+ if(mutationLocks.has(name)){toast('هذه العملية قيد التنفيذ؛ انتظر اكتمالها');return}
+ mutationLocks.add(name);
+ const buttons=[...document.querySelectorAll('button[onclick],input[type=button][onclick],input[type=submit][onclick]')].filter(b=>(b.getAttribute('onclick')||'').includes(name+'('));
+ const states=buttons.map(b=>[b,b.disabled,b.getAttribute('aria-busy')]);
+ states.forEach(([b])=>{b.disabled=true;b.setAttribute('aria-busy','true')});
+ try{return await work()}
+ catch(e){console.error('Operation failed: '+name,e);toast('تعذر إكمال العملية. تحقق من السجل والعمليات المعلّقة قبل إعادة المحاولة.');}
+ finally{mutationLocks.delete(name);states.forEach(([b,disabled,busy])=>{if(!b.isConnected)return;b.disabled=disabled;if(busy===null)b.removeAttribute('aria-busy');else b.setAttribute('aria-busy',busy)})}
+}
 boot();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
