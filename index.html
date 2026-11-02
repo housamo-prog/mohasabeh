@@ -416,17 +416,35 @@ function chartSvg(D){
    <text x=${x+bw/2} y=${H-9} text-anchor=middle font-size=12 ${t?'style="fill:var(--p);font-weight:700"':''}>${t?'اليوم':dn(d.d)}</text></g>`}).join('')}</svg>`}
 const delta=(a,b)=>{if(!b)return '';const p=Math.round((a-b)/Math.abs(b)*100);return `<span class="dl ${p>=0?'up':'dn'}">${ic(p>=0?'up':'down',14)}${Math.abs(p)}%</span>`};
 const kpi=(icn,l,v,sub,neg)=>`<div class=kpi><div class=kl>${ic(icn,16)}${l}</div><div class="kv ${neg?'neg':''}">${v}</div><div class=ks>${sub||''}</div></div>`;
+const SHORTCUT_KEY='home_shortcuts';
+const shortcutIds=()=>{try{return JSON.parse(localStorage[SHORTCUT_KEY]||'[]')}catch(e){return []}};
+const shortcutSave=a=>{localStorage[SHORTCUT_KEY]=JSON.stringify(a.slice(0,12))};
+function shortcutToggle(k){
+  const a=shortcutIds(),i=a.indexOf(k);
+  if(i>=0)a.splice(i,1);else{if(!TABS[k])return toast('الاختصار غير متاح');if(!tabOk(k))return toast('لا تملك صلاحية هذا القسم');a.push(k)}
+  shortcutSave(a);homeV();toast(i>=0?'تمت إزالة الاختصار':'تمت إضافة الاختصار');
+}
+function shortcutManager(){
+  const cur=shortcutIds();
+  const opts=Object.keys(TABS).filter(k=>k!=='home'&&tabOk(k)).map(k=>`<option value="${k}"${cur.includes(k)?' selected':''}>${esc(TABS[k])}</option>`).join('');
+  dlg({title:'اختصارات الشاشة الرئيسية',icon:'star',yes:'حفظ',fields:[{k:'ids',type:'select',multiple:true,options:opts,label:'اختر الأقسام'}]}).then(f=>{
+    if(!f)return;
+    const ids=Array.isArray(f.ids)?f.ids:(f.ids?[f.ids]:[]);
+    shortcutSave(ids.filter(k=>TABS[k]&&tabOk(k)));homeV();toast('تم حفظ الاختصارات ✓');
+  });
+}
 async function homeV(){
   const tk=++HT,rp=can('reports'),dbt=rp||can('vouchers'),sl=can('sell'),on=navigator.onLine,alive=()=>tk===HT&&S.tab=='home';
   const now=new Date(),greet=now.getHours()<12?'صباح الخير':'مساء الخير';
   const dstr=now.toLocaleDateString('ar-SY-u-nu-latn',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const left=Math.ceil((new Date(S.shop.subscription_until)-new Date(now.toDateString()))/864e5);
-  const QA=[['sale','بيع جديد'],['buy','فاتورة شراء'],['rcv','قبض ودفع'],['prod','المنتجات']].filter(([k])=>tabOk(k));
+  const QA=(shortcutIds().length?shortcutIds():['sale','buy','rcv','prod']).filter(k=>TABS[k]&&tabOk(k)).map(k=>[k,TABS[k]]);
   const low=lowList();
   $('#v').innerHTML=`<div class=hero><div><div class=m>${dstr}</div><h2>${greet}</h2></div>${on?'':'<span class="pill warn">بدون اتصال</span>'}</div>
   ${left<=14?`<div class="card note ${left<0?'bad':''}">${ic('cal')}<span>${left<0?'انتهى الاشتراك. تواصل معنا للتجديد.':'ينتهي الاشتراك خلال '+(left<=0?'اليوم':left==1?'يوم واحد':left==2?'يومين':left<=10?left+' أيام':left+' يوماً')+' ('+S.shop.subscription_until+')'} <a href="${waLink()}" target=_blank rel=noopener>تجديد عبر واتساب</a></span></div>`:''}
   ${pendHtml()}
   ${QA.length?`<div class=qa>${QA.map(([k,l])=>`<button onclick="nav('${k}')"><span>${ic(k,22)}</span>${l}</button>`).join('')}</div>`:''}
+  <div class=row style="margin:-4px 0 10px"><button class="b s" onclick="shortcutManager()">⚙️ إدارة الاختصارات</button></div>
   ${rp?`<div class=kpis id=hk>${[0,1,2,3].map(()=>`<div class=kpi>${skl(3)}</div>`).join('')}</div>
   <div class=card id=hch>${secH('rep','مبيعات آخر 7 أيام','rep','التقارير')}${skl(4)}</div>`:''}
   <div class=hgrid>
@@ -1971,7 +1989,7 @@ async function rcvVoid(id){
 const VT={receipt:'سند قبض',payment:'سند دفع',expense:'مصروف',offset:'مقاصة',exchange:'تصريف عملة',equity:'رأس مال / سحب'};
 async function vchV(){
   $('#v').innerHTML=`<div class=card><b>سند جديد</b>
-  <select id=vk onchange="vchForm()"><option value=expense>مصروف<option value=exchange>تصريف دولار<option value=receipt>سند قبض</select>
+  <select id=vk onchange="vchForm()"><option value=expense>مصروف<option value=exchange>تصريف دولار</select>
   <div id=vf></div></div>
   ${can('accounts')?`<div class=card><div class=row><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>`:''}
   <div class=card id=vl2><div class=m>جارٍ التحميل...</div></div>`;
@@ -1987,35 +2005,20 @@ function vchForm(){
   }else if(k=='expense'){
     h=`<input id=vn placeholder="البيان (مثال: إيجار، كهرباء)"><div class=row><input id=va type=number inputmode=decimal placeholder="المبلغ"><select id=vcu><option>SYP<option>USD</select></div>`
   }else{
-    h=`<select id=vdir onchange="vchRate()"><option value=buy>شراء دولار بالليرة<option value=sell>بيع دولار بالليرة</select>
-    <div class=row><input id=va type=number inputmode=decimal placeholder="مبلغ الدولار" oninput="vchRate()"><input id=vs type=number inputmode=decimal placeholder="المبلغ المدفوع بالليرة" oninput="vchRate()"></div>
-    <input id=vr type=number inputmode=decimal value="${S.shop.usd_rate}" placeholder="سعر الصرف (ليرة لكل دولار)" oninput="vchFromRate()">
-    <div id=vxr class=m>أدخل مبلغ الدولار والمبلغ المدفوع بالليرة؛ يُحسب سعر الصرف تلقائياً.</div>`
+    h=`<select id=vdir><option value=buy>شراء دولار بالليرة<option value=sell>بيع دولار بالليرة</select>
+    <input id=va type=number inputmode=decimal placeholder="المبلغ بالدولار">
+    <input id=vr type=number inputmode=decimal value="${S.shop.usd_rate}" placeholder="سعر الصرف (ليرة لكل دولار)">
+    <div class=m>يحرّك صندوق الليرة وصندوق الدولار معاً.</div>`
   }
   $('#vf').innerHTML=h+`<button class=b style="width:100%;margin-top:6px" onclick="vchSave()">حفظ السند</button>${k=='exchange'?'':'<div class=m>السند بالدولار يمرّ تلقائياً على صندوق الدولار، وبالليرة على صندوق الليرة.</div>'}`
-}
-function vchRate(){
-  const usd=+($('#va')?.value||0),syp=+($('#vs')?.value||0),el=$('#vxr');
-  if(!el)return;
-  if(usd>0&&syp>0)el.innerHTML='سعر الصرف المحسوب: <b>'+fmt(syp/usd)+'</b> ليرة لكل دولار';
-  else el.innerHTML='أدخل مبلغ الدولار والمبلغ المدفوع بالليرة؛ يُحسب سعر الصرف تلقائياً.';
-}
-function vchFromRate(){
-  const usd=+($('#va')?.value||0),rt=+($('#vr')?.value||0),vs=$('#vs');
-  if(!vs)return;
-  if(usd>0&&rt>0)vs.value=+(usd*rt).toFixed(2);
-  vchRate();
 }
 async function vchSave(){
   const k=$('#vk').value,a=+$('#va').value;
   if(!(a>0))return toast('أدخل المبلغ');
   let r;
   if(k=='exchange'){
-    const usd=+$('#va').value,syp=+$('#vs').value,rt=+$('#vr').value;
-    if(!(usd>0))return toast('أدخل مبلغ الدولار');
-    if(!(syp>0))return toast('أدخل المبلغ المدفوع بالليرة');
-    if(!(rt>0))return toast('سعر الصرف غير صالح');
-    r=await call('post_exchange',{p_shop:S.shop.id,p_client:uid(),p_direction:$('#vdir').value,p_usd:usd,p_rate:rt},true)
+    const rt=+$('#vr').value;if(!(rt>0))return toast('أدخل سعر الصرف');
+    r=await call('post_exchange',{p_shop:S.shop.id,p_client:uid(),p_direction:$('#vdir').value,p_usd:a,p_rate:rt},true)
   }else if(k=='expense'){
     const cu=$('#vcu').value;
     r=await call('record_expense',{p_shop:S.shop.id,p_client:uid(),p_amount:a,p_currency:cu,p_rate:rate(cu),p_desc:$('#vn').value.trim()||'مصروف'},true)
