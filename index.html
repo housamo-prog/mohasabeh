@@ -454,11 +454,11 @@ async function homeV(){
     .then(R=>{if(!alive())return;const D=days.map((d,i)=>({d,s:R[i]?R[i].s:0,p:R[i]?R[i].p:0})),pw=R[7],cnt=R[8],t=D[6];
       if(R.slice(0,7).every(x=>x===null)){$('#hk').style.display='none';$('#hch').style.display='none';return}
       const ws=D.reduce((a,x)=>a+x.s,0),wp=D.reduce((a,x)=>a+x.p,0),y=D[5];
-      $('#hk').innerHTML=kpi('sale','مبيعات اليوم',`${fmc(t.s)} <small>ل.س</small>`,(cnt!=null?cnt+' فاتورة · ':'')+'أمس '+fmc(y.s))
+      $('#hk').innerHTML=kpi('sale','صافي مبيعات اليوم',`${fmc(t.s)} <small>ل.س</small>`,(cnt!=null?cnt+' فاتورة · ':'')+'أمس '+fmc(y.s))
         +kpi('up','ربح اليوم',`${fmc(t.p)} <small>ل.س</small>`,t.s?'هامش '+Math.round(t.p/t.s*100)+'%':'لا مبيعات بعد',t.p<0)
-        +kpi('rep','مبيعات 7 أيام',`${fmc(ws)} <small>ل.س</small>`,pw?delta(ws,pw.s)+' عن الأسبوع السابق':'')
+        +kpi('rep','صافي مبيعات 7 أيام',`${fmc(ws)} <small>ل.س</small>`,pw?delta(ws,pw.s)+' عن الأسبوع السابق':'')
         +kpi('wallet','ربح 7 أيام',`${fmc(wp)} <small>ل.س</small>`,pw?delta(wp,pw.p)+' عن الأسبوع السابق':'',wp<0);
-      $('#hch').innerHTML=secH('rep','مبيعات آخر 7 أيام','rep','التقارير')+chartSvg(D)+'<div class=m>بالليرة السورية، بعد استبعاد الفواتير الملغاة</div>'})}
+      $('#hch').innerHTML=secH('rep','مبيعات آخر 7 أيام','rep','التقارير')+chartSvg(D)+'<div class=m>بالليرة السورية؛ باستبعاد الفواتير الملغاة وطرح مرتجعات الفترة</div>'})}
   if(dbt)db.from('partner_balances').select('*').then(({data,error})=>{if(!alive()||!$('#hdebt'))return;if(error){$('#hdebt').style.display='none';return}
     const P=data||[];S.debtD=P;S.balc=S.balc||{};P.forEach(p=>{const o=S.balc[p.id];S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:o?o.usd:undefined}});const rc=P.reduce((a,p)=>a+Math.max(0,+p.receivable||0),0),py=P.reduce((a,p)=>a+Math.max(0,+p.payable||0),0),top=P.filter(p=>+p.receivable>0).sort((a,b)=>b.receivable-a.receivable).slice(0,5);
     $('#hdebt').innerHTML=secH('debt','الديون','debt')+`<div class=bal2><div><span class=m>لنا عند الزبائن</span><b>${fmt(rc)}</b></div><div><span class=m>علينا للموردين</span><b class="${py>0?'neg':''}">${fmt(py)}</b></div></div>`
@@ -1562,7 +1562,7 @@ async function histV(){
   histList()
 }
 function histList(){
-  $('#v').innerHTML=`${pendHtml()}<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
+  $('#v').innerHTML=`${pendHtml()}${S.role==='owner'?'<div class=card><button class="b s" onclick="returnsList()">مرتجعات البيع والشراء</button></div>':''}<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
 }
 function showInv(k){
   const x=S.hist[k];
@@ -1570,7 +1570,7 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
   <h3>الإجمالي: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
-  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button><button class="b s" onclick="invPdf(${k})">📄 PDF / واتساب</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}<button class="b s" onclick="histV()">رجوع</button></div></div>`
+  <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button><button class="b s" onclick="invPdf(${k})">📄 PDF / واتساب</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}${!x.voided_at&&S.role==='owner'?`<button class="b s" onclick="returnForm(${k})">${x.kind==='sale'?'مرتجع مبيع':'مرتجع شراء'}</button>`:''}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
@@ -2117,6 +2117,90 @@ async function runMutationOnce(name,work){
  catch(e){console.error('Operation failed: '+name,e);toast('تعذر إكمال العملية. تحقق من السجل والعمليات المعلّقة قبل إعادة المحاولة.');}
  finally{mutationLocks.delete(name);states.forEach(([b,disabled,busy])=>{if(!b.isConnected)return;b.disabled=disabled;if(busy===null)b.removeAttribute('aria-busy');else b.setAttribute('aria-busy',busy)})}
 }
+
+const returnPendingKey=()=> 'pending_invoice_return:'+S.shop.id;
+function returnPending(){try{return JSON.parse(localStorage.getItem(returnPendingKey())||'null')}catch(e){return null}}
+async function returnForm(k){return runMutationOnce('returnForm',async()=>{
+ if(S.role!=='owner')return toast('المرتجعات للمالك فقط');
+ if(!navigator.onLine)return toast('المرتجعات تحتاج اتصالاً بالإنترنت');
+ const pending=returnPending();if(pending){await returnsList();return toast('يوجد طلب لم تُحسم نتيجته؛ تحقق منه أو أعد إرسال الطلب نفسه من قائمة المرتجعات')}
+ const x=S.hist[k];if(!x||x.voided_at)return toast('لا يمكن إرجاع فاتورة ملغاة');
+ const sale=x.kind==='sale',table=sale?'sale_items':'purchase_items',fk=sale?'sale_id':'purchase_id',price=sale?'price':'unit_cost';
+ const [a,b]=await Promise.all([
+  db.from(table).select('id,product_id,qty,'+price+',products(name)').eq('shop_id',S.shop.id).eq(fk,x.id),
+  db.from('invoice_return_items').select('sale_item_id,purchase_item_id,qty,invoice_returns!inner(sale_id,purchase_id)').eq('shop_id',S.shop.id).eq('invoice_returns.'+fk,x.id)
+ ]);
+ if(a.error||b.error)return toast('تعذر تحميل المرتجعات. تأكد من تثبيت ملف SQL: '+(a.error||b.error).message);
+ const lines=(a.data||[]).map(i=>{const prev=(b.data||[]).filter(r=>r[sale?'sale_item_id':'purchase_item_id']===i.id).reduce((t,r)=>t+Number(r.qty),0);return {...i,unit:Number(i[price]),prev,remaining:Math.max(0,Number(i.qty)-prev)}});
+ S.returnDraft={invoice:x,lines};
+ $('#v').innerHTML=`<div class=card><h3>${sale?'مرتجع مبيع':'مرتجع شراء'} · ${esc(x.date)}</h3><div class=m>${esc(x.partners?.name||'نقدي')} · ${esc(x.currency)} · سعر الفاتورة ${fmt(x.rate)}</div>
+ <p class=m>أدخل الكمية المرتجعة لكل بند. يرحّل المرتجع إلى المستودع الأصلي، ويُمنع تجاوز المرتجع السابق والكمية الأصلية.</p>
+ ${lines.map((i,j)=>`<div class=it style="display:block"><label for="retq${j}">${esc(i.products?.name||'مادة')} · المتبقي للإرجاع ${fmt(i.remaining)} · السعر ${fmt(i.unit)}</label><input id="retq${j}" type=number min=0 step=any max="${i.remaining}" value=0 ${i.remaining<=0?'disabled':''} inputmode=decimal oninput="returnCalc()"></div>`).join('')}
+ <h3 id=returnTotal></h3><label for=returnCash>${sale?'المبلغ النقدي المعاد للزبون':'المبلغ النقدي المستلم من المورد'} (${esc(x.currency)})</label>
+ <input id=returnCash type=number min=0 step=0.01 value=0 inputmode=decimal>
+ <div class=m>${x.partner_id?'باقي قيمة المرتجع يُسوّى على حساب الطرف، وقد ينتج رصيد لصالحه أو لصالحك.':'الفاتورة بلا طرف: يجب أن تساوي التسوية النقدية كامل قيمة المرتجع.'} في مرتجع الشراء تُسجّل فروق تكلفة المخزون في حساب تكلفة البضاعة.</div>
+ <label for=returnDate>تاريخ المرتجع</label><input id=returnDate type=date value="${today()}"><label for=returnNote>البيان</label><input id=returnNote maxlength=500>
+ <div class=row><button class=b onclick="returnSave()">حفظ المرتجع</button><button class="b s" onclick="returnsList()">قائمة المرتجعات</button><button class="b s" onclick="histV()">رجوع</button></div>
+ <p class=m>مستند مستقل لا يلغي الفاتورة. لا يتوفر تعديل أو إلغاء المرتجع في هذه النسخة؛ راجع الكميات والمبلغ قبل التأكيد.</p></div>`;
+ returnCalc();
+})}
+function returnValues(){
+ const d=S.returnDraft;if(!d)throw Error('افتح نموذج المرتجع أولاً');let total=0;
+ const round=n=>Math.round((n+Number.EPSILON)*100)/100;
+ const items=d.lines.flatMap((i,j)=>{const q=Number($('#retq'+j).value);if(!Number.isFinite(q)||q<0||q>i.remaining+1e-9)throw Error('كمية غير صالحة في أحد البنود');if(!q)return [];
+ const orig=round(Number(i.qty)*i.unit);total+=round(orig*(i.prev+q)/Number(i.qty))-round(orig*i.prev/Number(i.qty));return [{item_id:i.id,qty:q}]});
+ return {items,total:round(total)};
+}
+function returnCalc(){try{const v=returnValues();$('#returnTotal').textContent='إجمالي المرتجع: '+fmt(v.total)+' '+S.returnDraft.invoice.currency;if(!S.returnDraft.invoice.partner_id)$('#returnCash').value=v.total}catch(e){$('#returnTotal').textContent=e.message}}
+async function returnSave(){return runMutationOnce('returnSave',async()=>{
+ if(returnPending())return toast('يوجد طلب معلق؛ أعد إرساله من قائمة المرتجعات');
+ const d=S.returnDraft,v=returnValues(),cash=Number($('#returnCash').value),date=$('#returnDate').value;
+ if(!v.items.length||v.total<=0)return toast('اختر كمية مرتجعة ذات قيمة أكبر من صفر');
+ if(!Number.isFinite(cash)||cash<0||cash>v.total||Math.abs(cash*100-Math.round(cash*100))>1e-6)return toast('أدخل مبلغاً نقدياً صحيحاً ضمن قيمة المرتجع وبحد أقصى منزلتين');
+ if(!date)return toast('حدد تاريخ المرتجع');
+ if(!d.invoice.partner_id&&cash!==v.total)return toast('المرتجع بلا طرف يتطلب تسوية نقدية كاملة');
+ if(!await ok('تأكيد حفظ المرتجع',{danger:true,yes:'حفظ وترحيل',msg:'القيمة '+fmt(v.total)+' '+d.invoice.currency+'، النقدي '+fmt(cash)+'. ستتغير أرصدة المخزون والحسابات. لا يتوفر إلغاء المرتجع في هذه النسخة.'}))return;
+ const args={p_shop:S.shop.id,p_client:uid(),p_kind:d.invoice.kind,p_invoice:d.invoice.id,p_items:v.items,p_cash:cash,p_date:date,p_note:$('#returnNote').value.trim()||null};
+ localStorage.setItem(returnPendingKey(),JSON.stringify(args));
+ await sendReturnRequest(args);
+})}
+async function sendReturnRequest(args){
+ const {data,error}=await db.rpc('post_invoice_return',args).then(r=>r,e=>({error:e}));
+ if(error){
+  const uncertain=!error.code||/fetch|network|timeout|abort/i.test(error.message||'')||/^(08|PGRST0)/.test(error.code);
+  if(!uncertain)localStorage.removeItem(returnPendingKey());
+  await say('لم يكتمل تأكيد المرتجع',{msg:(error.message||'تعذر الاتصال')+(uncertain?'\nاحتُفظ بالطلب ومعرّفه. لا تنشئ طلباً بديلاً؛ استخدم التحقق أو إعادة إرسال الطلب نفسه.':'\nرفض الخادم الطلب؛ راجع البيانات قبل المحاولة مجدداً.')});
+  if(uncertain)await returnsList();return;
+ }
+ if(!data){toast('استجابة غير متوقعة؛ احتُفظ بالطلب للتحقق');return}
+ localStorage.removeItem(returnPendingKey());S.returnDraft=null;
+ await refresh();await returnsList();toast('تم ترحيل المرتجع ✓');
+}
+async function retryReturn(){return runMutationOnce('retryReturn',async()=>{const p=returnPending();if(p)await sendReturnRequest(p)})}
+async function checkPendingReturn(){return runMutationOnce('checkPendingReturn',async()=>{
+ const p=returnPending();if(!p)return;
+ const {data,error}=await db.from('invoice_returns').select('id').eq('shop_id',S.shop.id).eq('client_id',p.p_client).maybeSingle();
+ if(error)return toast(error.message);
+ if(data){localStorage.removeItem(returnPendingKey());await refresh();await returnsList();toast('المرتجع مسجل بالفعل؛ لم يُنشأ مرتجع جديد')}
+ else toast('لم يظهر الطلب في السجل بعد. يمكنك إعادة إرسال الطلب نفسه بأمان؛ لا تنشئ بديلاً له.');
+})}
+async function returnsList(){
+ if(S.role!=='owner')return toast('المرتجعات للمالك فقط');
+ $('#v').innerHTML='<div class=card>جارٍ تحميل المرتجعات...</div>';
+ const {data,error}=await db.from('invoice_returns').select('id,kind,return_date,currency,total,cash_amount,note,created_at,partners(name)').eq('shop_id',S.shop.id).order('created_at',{ascending:false}).limit(100);
+ if(error){$('#v').innerHTML='<div class=card>'+esc(error.message)+'<p>ثبّت ملف SQL الخاص بالمرتجعات أولاً.</p><button class="b s" onclick="histV()">رجوع</button></div>';return}
+ S.returns=data||[];const pending=returnPending();
+ $('#v').innerHTML=`<div class=card><h3>مرتجعات البيع والشراء</h3><button class="b s" onclick="histV()">الفواتير الأصلية</button><p class=m>آخر 100 مرتجع. لإنشاء مرتجع، افتح الفاتورة الأصلية واضغط زر المرتجع.</p>
+ ${pending?'<div class=card><b>طلب لم تُحسم نتيجته</b><p>لا تُدخل طلباً بديلاً. تحقق من التسجيل أو أعد إرسال نفس الطلب.</p><button class="b s" onclick="checkPendingReturn()">تحقق من التسجيل</button><button class=b onclick="retryReturn()">إعادة إرسال نفس الطلب</button></div>':''}
+ ${S.returns.map((r,j)=>`<div class=it><span>${r.kind==='sale'?'مرتجع مبيع':'مرتجع شراء'} · ${esc(r.return_date)}<br>${esc(r.partners?.name||'نقدي')}</span><span>${fmt(r.total)} ${esc(r.currency)}<br><button class="b s" onclick="returnPrint(${j})">طباعة</button></span></div>`).join('')||'<div class=m>لا مرتجعات بعد</div>'}</div>`;
+}
+async function returnPrint(k){return runMutationOnce('returnPrint',async()=>{
+ const r=S.returns[k];if(!r)return;
+ const {data,error}=await db.from('invoice_return_items').select('qty,price,line_total,products(name),warehouses(name)').eq('shop_id',S.shop.id).eq('return_id',r.id);
+ if(error)return toast(error.message);
+ $('#rcpt').innerHTML=`${coHdr()}<h3>${r.kind==='sale'?'فاتورة مرتجع مبيع':'فاتورة مرتجع شراء'}</h3><div>${esc(r.return_date)} · ${esc(r.partners?.name||'نقدي')}</div><table>${(data||[]).map(i=>`<tr><td>${esc(i.products?.name||'')}<br>${esc(i.warehouses?.name||'')}<td>${fmt(i.qty)} × ${fmt(i.price)}<td>${fmt(i.line_total)}</tr>`).join('')}</table><hr><b>الإجمالي ${fmt(r.total)} ${esc(r.currency)}</b><div>التسوية النقدية ${fmt(r.cash_amount)} · على حساب الطرف ${fmt(Number(r.total)-Number(r.cash_amount))}</div><div>${esc(r.note||'')}</div>${coFtr()}`;print();
+})}
+
 boot();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
