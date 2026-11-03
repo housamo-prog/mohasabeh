@@ -265,6 +265,41 @@ details.card{padding:12px 14px}
 .rar{display:flex;align-items:center;gap:8px;flex:none}.rar .b{padding:8px 12px;font-size:13px}
 .dlg textarea{font-size:14px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+ /* منع محتوى الصفحة من توسيع التخطيط */
+.pg,
+main,
+#v {
+  min-width: 0;
+}
+
+main {
+  width: 100%;
+}
+
+.card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ترتيب الأزرار على شاشات الجوال */
+@media (max-width: 600px) {
+  #v .card > .row {
+    flex-wrap: wrap;
+  }
+
+  #v .card > .row > button {
+    flex: 1 1 110px;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  header.top .brand {
+    flex: 1;
+    overflow: hidden;
+  }
+}
 </style>
 </head>
 <body>
