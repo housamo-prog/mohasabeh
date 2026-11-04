@@ -727,7 +727,27 @@ async function _once_currencyForm(){
 }
 async function currencyDisable(...args){return runMutationOnce('currencyDisable',()=>_once_currencyDisable(...args))}
 async function _once_currencyDisable(id){
-  const c=(S.currencies||[]).find(x=>x.id===id);if(!c)return;
+  const c =
+  (S.currencies || []).find(
+    x => x.id === id || x.code === id
+  ) ||
+  curRows().find(
+    x => x.id === id || x.code === id
+  ) ||
+  (
+    id === 'USD'
+      ? {
+          code: 'USD',
+          name: 'دولار أمريكي',
+          rate_to_syp: Number(S.shop?.usd_rate) || 1
+        }
+      : null
+  );
+
+if (!c) {
+  toast('تعذر العثور على العملة. أعد فتح إدارة العملات.');
+  return;
+}
   if(S.prods.some(p=>p.sale_currency===c.code))return toast('لا يمكن تعطيل هذه العملة لأنها مستخدمة في بطاقات مواد. غيّر عملة المواد أولاً.');
   if(!await ok('تعطيل العملة '+c.code+'؟',{danger:true,yes:'تعطيل'}))return;
   const {error}=await db.from('shop_currencies').update({is_active:false}).eq('id',id).eq('shop_id',S.shop.id);
