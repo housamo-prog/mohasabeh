@@ -346,7 +346,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -390,8 +390,9 @@ search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 scan:'<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M11 8v8"/><path d="M15 8v8"/><path d="M18 8v8"/>',
 plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
+gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[,٬\s]/g,'');
@@ -536,7 +537,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','stock','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -689,7 +690,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -713,7 +714,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -875,7 +876,7 @@ function dscUpd(){const r=$('#dscr');if(!r)return;const n=S.cart.length;
   const d=discAmt();$('#dsm').innerHTML=d>0?`المجموع ${fmt(tot())} − الحسم ${fmt(d)} = <b>${fmt(net())}</b> ${S.cur}`:''}
 const unitF=(pid,u)=>{if(!u)return 1;const x=(S.units[pid]||[]).find(v=>v.id==u);return x?+x.factor:1};
 function unitNm(i){const p=S.prods.find(x=>x.id==i.id)||{};if(!i.un)return p.unit||'قطعة';const u=(S.units[i.id]||[]).find(x=>x.id==i.un);return u?u.name:(p.unit||'قطعة')}
-function freeBase(i){if(i.noOffer||i.free||S.mode==='open')return 0;const sale=S.mode==='sale',qb=(+i.qty||0)*(i.f||1);let best=0;
+function freeBase(i,ign){if((i.noOffer&&!ign)||i.free||i.locked||S.mode==='open')return 0;const sale=S.mode==='sale',qb=(+i.qty||0)*(i.f||1);let best=0;
   (S.offers[i.id]||[]).forEach(o=>{if(o.active===false||!(o.applies_to==='both'||o.applies_to===(sale?'sale':'purchase')))return;
     const per=(+o.buy_qty)*unitF(i.id,o.buy_unit_id);if(!(per>0))return;
     const k=Math.floor(qb/per+1e-9),f=+(k*(+o.free_qty)*unitF(i.id,o.free_unit_id)).toFixed(6);if(f>best)best=f});
@@ -884,6 +885,7 @@ function invLines(){const o=[];S.cart.forEach(i=>{o.push({n:i.name+((S.units[i.i
 function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f;
   o.push(sale?{product_id:i.id,qty:qb,price:pb}:{product_id:i.id,qty:qb,unit_cost:pb});
   const fr=freeBase(i);if(fr>0)o.push(sale?{product_id:i.id,qty:fr,price:0}:{product_id:i.id,qty:fr,unit_cost:0})});return o}
+function togLineOffer(k){const i=S.cart[k];if(!i)return;i.noOffer=!i.noOffer;cartV()}
 function cu(k,u){const i=S.cart[k];if(!i)return;i.un=u||null;i.f=unitF(i.id,u);i.price=+(i.base*i.f/rate(S.cur)).toFixed(4);cartV()}
 
 function cq(k,d,v){const i=S.cart[k];if(!i)return;let q=v!==undefined?+toEn(v):+(i.qty+d).toFixed(3);if(!(q>0))S.cart.splice(k,1);else i.qty=q;cartV()}
@@ -896,7 +898,7 @@ function cartV(){
   const el=$('#cart');if(!el)return;
   const sale=S.mode=='sale',n=S.cart.length;
   el.innerHTML=n?S.cart.map((i,k)=>{const have=lvl(i.id,S.wh),fr=freeBase(i),over=sale&&!S.edit&&(i.qty*(i.f||1)+fr)>have+1e-9,pr=S.prods.find(x=>x.id==i.id)||{},us=S.units[i.id]||[];
-   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${fr>0?`<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span>`:''}</span></div>
+   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span></div>
    <div class=step><button onclick="cq(${k},1)" aria-label="زيادة الكمية">${ic('plus',16)}</button><input inputmode=decimal dir=ltr value="${i.qty}" onchange="cq(${k},0,this.value)" onfocus="this.select()" aria-label="كمية ${esc(i.name)}"><button onclick="cq(${k},-1)" aria-label="${i.qty<=1?'حذف البند':'إنقاص الكمية'}" class="${i.qty<=1?'rm':''}">${ic(i.qty<=1?'trash':'minus',16)}</button></div>
    <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*100)/100)}</b></div>`}).join('')
    :`<div class=empty>${ic('sale',30)}<div>اضغط على منتج أو امسح الباركود لإضافته</div></div>`;
@@ -1662,7 +1664,7 @@ function showInv(k){
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
   S.mode=x.kind=='sale'?'sale':'buy';S.cur=x.currency;
-  S.cart=x.items.map(i=>({id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,free:+i.p===0}));S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
+  S.cart=x.items.map(i=>({id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free:+i.p===0}));S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
   S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
@@ -1724,8 +1726,42 @@ async function _once_saveP(id){
   if(error)return toast(dupMsg(error));
   await refresh();prodV();toast('تم الحفظ ✓')
 }
+/* ---- قسم العروض التجارية: كل عروض الأصناف ---- */
+const offTxt=(p,o)=>{const us=S.units[p.id]||[],bu=p.unit||'قطعة',un=id=>id?((us.find(u=>u.id==id)||{}).name||'؟'):bu;
+  return `مع كل ${fmt(o.buy_qty)} ${esc(un(o.buy_unit_id))} ← ${fmt(o.free_qty)} ${esc(un(o.free_unit_id))} مجاناً`};
+async function offersV(){
+  if(navigator.onLine)await loadUO();
+  const ow=can('products');
+  const prods=S.prods.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  $('#v').innerHTML=`${ow?`<div class=card><b>إضافة عرض جديد</b>
+  <label class=fl for=ofp>المادة</label><select id=ofp onchange="offUnits()">${prods.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+  <label class=fl>يسري العرض</label><select id=of_ap><option value=both>في البيع والشراء<option value=sale>في البيع فقط<option value=purchase>في الشراء فقط</select>
+  <div class=row><div><label class=fl>عند كمية</label><input id=of_bq type=number inputmode=decimal dir=ltr value="1"></div><div><label class=fl>بوحدة</label><select id=of_bu></select></div></div>
+  <div class=row><div><label class=fl>يُعطى مجاناً</label><input id=of_fq type=number inputmode=decimal dir=ltr value="1"></div><div><label class=fl>بوحدة</label><select id=of_fu></select></div></div>
+  <button class="b" style="width:100%;margin-top:6px" onclick="addOffer($('#ofp').value)">حفظ العرض</button></div>`:''}
+  <div class=card><b>العروض التجارية للأصناف</b>
+  <input id=ofq type=search placeholder="ابحث باسم المادة" value="${esc(S.ofq||'')}" oninput="S.ofq=this.value;offList()" aria-label="بحث في العروض">
+  <label class=m style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type=checkbox id=ofa style="width:auto;margin:0" ${S.ofAct?'checked':''} onchange="S.ofAct=this.checked;offList()"> إظهار العروض الفعّالة فقط</label>
+  <div id=ofl></div></div>`;
+  if(ow)offUnits();
+  offList()
+}
+function offUnits(){
+  const pid=$('#ofp')&&$('#ofp').value,p=S.prods.find(x=>x.id==pid);if(!p)return;
+  const o=`<option value="">${esc(p.unit||'قطعة')}</option>`+(S.units[pid]||[]).map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  $('#of_bu').innerHTML=o;$('#of_fu').innerHTML=o
+}
+function offList(){
+  const el=$('#ofl');if(!el)return;
+  const ow=can('products'),k=nAr(S.ofq||''),AO={sale:'في البيع',purchase:'في الشراء',both:'في البيع والشراء'};
+  const rows=S.prods.filter(p=>(S.offers[p.id]||[]).some(o=>!S.ofAct||o.active!==false)&&(!k||nAr(p.name).includes(k))).sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  el.innerHTML=rows.map(p=>`<div style="padding:8px 0;border-top:1px solid var(--b)"><b ${ow?`style="cursor:pointer" onclick="go('prod');editP('${p.id}')" title="تعديل المادة"`:''}>${esc(p.name)}</b>
+  ${(S.offers[p.id]||[]).filter(o=>!S.ofAct||o.active!==false).map(o=>`<div class=it style="${o.active===false?'opacity:.55':''}"><span>🎁 ${offTxt(p,o)}<br><span class=m>${AO[o.applies_to]||''}${o.active===false?' · موقوف':''}</span></span>${ow?`<span style="display:flex;gap:6px"><button class="b s" style="padding:4px 10px" onclick="togOffer('${o.id}','${p.id}')">${o.active===false?'تفعيل':'إيقاف'}</button><button class="b s neg" style="padding:4px 10px" onclick="delOffer('${o.id}','${p.id}')">حذف</button></span>`:''}</div>`).join('')}</div>`).join('')
+  ||`<div class=m style="padding:8px 0">${Object.keys(S.offers).length?'لا توجد عروض مطابقة':'لا توجد عروض تجارية بعد'}</div>`
+}
 /* ---- وحدات الكمية والعروض التجارية (في تعديل المادة) ---- */
 function uoV(pid){
+  if(S.tab==='offers')return offersV();
   const el=$('#uo');if(!el)return;
   const p=S.prods.find(x=>x.id==pid);if(!p)return;
   const us=S.units[pid]||[],os=S.offers[pid]||[],bu=p.unit||'قطعة';
