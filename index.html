@@ -207,6 +207,7 @@ body.home #cb{display:none!important}
 .cl-n{grid-area:n;min-width:0}.cl-n b{display:block;font-size:14.5px;line-height:1.35}
 .cl-p{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
 .cpr{width:96px;padding:3px 8px;margin:2px 0;font-size:13px;border-radius:8px;background:transparent;border-style:dashed}
+.cnt{width:100%;padding:3px 8px;margin:2px 0;font-size:12px;border-radius:8px;background:transparent;border-style:dashed}
 .cun{width:auto;max-width:112px;padding:3px 6px;margin:2px 0;font-size:13px;border-radius:8px}
 .dscr{margin-top:10px;padding:10px;border-radius:12px;background:var(--c2);border:1px dashed var(--b)}.dscr input,.dscr select{margin:0}.dscr select{flex:0 0 auto;width:auto}
 .step{grid-area:s;display:inline-flex;align-items:center;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--c2);width:max-content}
@@ -881,10 +882,13 @@ function freeBase(i,ign){if((i.noOffer&&!ign)||i.free||i.locked||S.mode==='open'
     const per=(+o.buy_qty)*unitF(i.id,o.buy_unit_id);if(!(per>0))return;
     const k=Math.floor(qb/per+1e-9),f=+(k*(+o.free_qty)*unitF(i.id,o.free_unit_id)).toFixed(6);if(f>best)best=f});
   return best}
-function invLines(){const o=[];S.cart.forEach(i=>{o.push({n:i.name+((S.units[i.id]||[]).length?' ('+unitNm(i)+')':''),q:i.qty,p:i.price});const fr=freeBase(i);if(fr>0)o.push({n:i.name+' (مجاني)',q:fr,p:0})});return o}
-function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f;
-  o.push(sale?{product_id:i.id,qty:qb,price:pb}:{product_id:i.id,qty:qb,unit_cost:pb});
-  const fr=freeBase(i);if(fr>0)o.push(sale?{product_id:i.id,qty:fr,price:0}:{product_id:i.id,qty:fr,unit_cost:0})});return o}
+function invLines(){const o=[];S.cart.forEach(i=>{const f=i.f||1,p=S.prods.find(x=>x.id==i.id)||{};o.push({id:i.id,n:i.name,q:+(i.qty*f).toFixed(6),p:i.price/f,un:unitNm(i),uq:i.qty,note:(i.note||'').trim()||null});const fr=freeBase(i);if(fr>0)o.push({id:i.id,n:i.name+' (مجاني)',q:fr,p:0,un:p.unit||'قطعة',uq:fr,note:null})});return o}
+function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt};
+  o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex});
+  const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx})}});return o}
+const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*100)/100;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
+function cn(k,v){const i=S.cart[k];if(i)i.note=String(v||'').slice(0,200)}
+function cnOpen(k){const i=S.cart[k];if(!i)return;i.nt=true;cartV();setTimeout(()=>{const e=$('#cn'+k);if(e)e.focus()},0)}
 function togLineOffer(k){const i=S.cart[k];if(!i)return;i.noOffer=!i.noOffer;cartV()}
 function cu(k,u){const i=S.cart[k];if(!i)return;i.un=u||null;i.f=unitF(i.id,u);i.price=+(i.base*i.f/rate(S.cur)).toFixed(4);cartV()}
 
@@ -898,7 +902,7 @@ function cartV(){
   const el=$('#cart');if(!el)return;
   const sale=S.mode=='sale',n=S.cart.length;
   el.innerHTML=n?S.cart.map((i,k)=>{const have=lvl(i.id,S.wh),fr=freeBase(i),over=sale&&!S.edit&&(i.qty*(i.f||1)+fr)>have+1e-9,pr=S.prods.find(x=>x.id==i.id)||{},us=S.units[i.id]||[];
-   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span></div>
+   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span>${(i.note||i.nt)?`<input class=cnt id=cn${k} maxlength=200 placeholder="ملاحظة على البند" value="${esc(i.note||'')}" oninput="cn(${k},this.value)" aria-label="ملاحظة ${esc(i.name)}">`:`<button class=lnk style="align-self:flex-start" onclick="cnOpen(${k})">+ ملاحظة</button>`}</div>
    <div class=step><button onclick="cq(${k},1)" aria-label="زيادة الكمية">${ic('plus',16)}</button><input inputmode=decimal dir=ltr value="${i.qty}" onchange="cq(${k},0,this.value)" onfocus="this.select()" aria-label="كمية ${esc(i.name)}"><button onclick="cq(${k},-1)" aria-label="${i.qty<=1?'حذف البند':'إنقاص الكمية'}" class="${i.qty<=1?'rm':''}">${ic(i.qty<=1?'trash':'minus',16)}</button></div>
    <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*100)/100)}</b></div>`}).join('')
    :`<div class=empty>${ic('sale',30)}<div>اضغط على منتج أو امسح الباركود لإضافته</div></div>`;
@@ -1187,7 +1191,9 @@ async function _once_saveVoucher(){
 }
 function stmtCard(o){
   S.sc=o;
-  $('#stm').innerHTML=`<b>كشف الحساب</b>${o.partner?`<div class=row style="margin:6px 0"><button id=sm1 class="b" onclick="stmtMode(0)">مختصر</button><button id=sm2 class="b s" onclick="stmtMode(1)">تفصيلي (بالمواد)</button></div>`:''}<div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
+  if(o.partner){const pp=S.parts.find(x=>x.id==o.partner);o.pcur=(pp&&pp.account_currency)||'SYP'}else o.pcur=o.usd?'USD':'SYP';
+  o.cur=o.pcur;
+  $('#stm').innerHTML=`<b>كشف الحساب</b>${o.partner?`<div class=row style="margin:6px 0"><button id=sm1 class="b" onclick="stmtMode(0)">مختصر</button><button id=sm2 class="b s" onclick="stmtMode(1)">تفصيلي (بالمواد)</button></div><div class=row style="margin:6px 0"><button id=sc1 class="b ${o.cur==='SYP'?'':'s'}" onclick="stmtCur('SYP')">بالليرة</button><button id=sc2 class="b ${o.cur==='USD'?'':'s'}" onclick="stmtCur('USD')">بالدولار</button></div>`:''}<div class=row><input id=sf type=date value="${ld(new Date(new Date().getFullYear(),0,1))}"><input id=st type=date value="${today()}"></div>
   <div class=row><button class=b onclick="stmtLoad()">عرض</button><button class="b s" onclick="stmtPrint()">طباعة</button></div>
   <button class="b s" style="width:100%;margin-top:6px" onclick="stmtPdf()">📄 إرسال PDF عبر واتساب</button><div id=sr></div>`;
   stmtLoad()
@@ -1219,17 +1225,16 @@ async function pdfBuild(pages){
   return pdf.output('blob')
 }
 function invPages(x){
-  const cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38)?10:14,ch=[];
+  const cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38||i.note)?10:14,ch=[];
   for(let i=0;i<x.items.length;i+=N)ch.push(x.items.slice(i,i+N));if(!ch.length)ch.push([]);
   return ch.map((c,pi)=>{const last=pi==ch.length-1;
     const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>المرجع:</b> <span dir=ltr>${String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
-    +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية<th ${TH}>السعر<th ${TH}>الإجمالي</tr>${c.map((i,k)=>`<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}<td ${TD}>${fmt(i.q)}<td ${TD}>${fmt(i.p)}<td ${TD}>${fmt(i.q*i.p)}</tr>`).join('')}</table>`
+    +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية<th ${TH}>السعر<th ${TH}>الإجمالي</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}</tr>`}).join('')}</table>`
     +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${fmt(+x.total+ +x.discount)} ${cu}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${fmt(x.discount)} ${cu}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${fmt(x.total)} ${cu}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${fmt(x.paid)} ${cu}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${fmt(x.total-x.paid)} ${cu}</b></div></div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
     return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
 }
 function stmtPages(o,f,t,rows,det){
-  const bal=x=>o.usd?(o.nat?+x.usd_balance:-x.usd_balance):(o.nat?+x.balance:-x.balance),
-    dr=x=>o.usd?x.usd_debit:x.debit,cr=x=>o.usd?x.usd_credit:x.credit,LIM=det?24:20,pages=[];
+  const A=S.sacc||stmtAcc(o),bal=A.bal,dr=A.dr,cr=A.cr,LIM=det?24:20,pages=[];
   let cur=[],bud=0;
   rows.forEach(x=>{const cost=det?1+((x.items&&x.items.length)?x.items.length+1:0):1;
     if(cur.length&&bud+cost>LIM){pages.push(cur);cur=[];bud=0}cur.push(x);bud+=cost});
@@ -1238,8 +1243,8 @@ function stmtPages(o,f,t,rows,det){
   return pages.map((c,pi)=>{const isLast=pi==pages.length-1;
     const body=`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>التاريخ<th ${TH}>البيان<th ${TH}>مدين<th ${TH}>دائن<th ${TH}>الرصيد</tr>${c.map(x=>{const it=det&&x.items&&x.items.length;
       return `<tr><td ${TD}>${x.entry_date}<td ${TD}>${esc(x.description||'')}<td ${TD}>${+dr(x)?fmt(dr(x)):''}<td ${TD}>${+cr(x)?fmt(cr(x)):''}<td ${TD}><b>${fmt(bal(x))}</b></tr>`+(it?`<tr><td colspan=5 style="padding:3px 18px 8px;border-bottom:1px solid #ddd;font-size:11px;color:#333">${x.items.map(i=>esc(i.n)+' — '+fmt(i.q)+' × '+fmt(i.p)+' = '+fmt(i.t)).join('<br>')}<br><b>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</b></td></tr>`:'')}).join('')}</table>`
-      +(isLast?`<div style="margin-top:14px;text-align:end;font-size:16px"><b>الرصيد النهائي: ${last?fmt(bal(last)):0} ${o.usd?'$':'ل.س'}</b></div>`:'');
-    return {title:esc(o.title)+(det?' (تفصيلي)':''),sub:f+' ← '+t+(o.usd?' · بالدولار':''),body,last:isLast}})
+      +(isLast?`<div style="margin-top:14px;text-align:end;font-size:16px"><b>الرصيد النهائي: ${last?fmt(bal(last)):0} ${A.unit}</b></div>`:'');
+    return {title:esc(o.title)+(det?' (تفصيلي)':''),sub:f+' ← '+t+esc(A.lbl),body,last:isLast}})
 }
 function pdfDialog(blob,name,text,phone){
   S.pdf={blob,name,text,phone};
@@ -1273,15 +1278,25 @@ async function invPdf(k){
     pdfDialog(await pdfBuild(invPages(x)),`${x.kind}-invoice-${x.date}-${String(x.id).slice(-6)}.pdf`,txt,x.partners?.phone||'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
 }
+function stmtAcc(o){
+  const sgn=o.nat?1:-1,mode=o.cur==='USD'?(o.pcur==='USD'?'usd':'conv'):'base';
+  if(mode==='usd')return {mode,sym:'$',unit:'$',lbl:' (بالدولار)',dr:x=>+x.usd_debit,cr:x=>+x.usd_credit,bal:x=>sgn*x.usd_balance,sub:x=>sgn*x.balance,subSym:'ل.س'};
+  if(mode==='conv'){const r=rate('USD')||1;return {mode,sym:'$',unit:'$',r,lbl:' (بالدولار، محوّل بسعر الصرف الحالي '+fmt(r)+')',dr:x=>x.debit/r,cr:x=>x.credit/r,bal:x=>sgn*x.balance/r}}
+  return {mode,sym:'',unit:'ل.س',lbl:o.pcur==='USD'&&o.partner?' (بالليرة، بقيمة كل عملية وقت تسجيلها)':'',dr:x=>+x.debit,cr:x=>+x.credit,bal:x=>sgn*x.balance}
+}
+function stmtCur(c){
+  const o=S.sc;o.cur=c;
+  if($('#sc1'))$('#sc1').className='b '+(c==='SYP'?'':'s');if($('#sc2'))$('#sc2').className='b '+(c==='USD'?'':'s');
+  stmtLoad()
+}
 async function stmtPdf(){
   const o=S.sc,f=$('#sf').value,t=$('#st').value;
   if(!S.sd||!S.sd.length)return toast('اعرض الكشف أولاً');
   toast('جارٍ تجهيز ملف PDF...');
   try{
-    const det=!!(o.partner&&o.det),p=o.partner?S.parts.find(x=>x.id==o.partner):null,last=S.sd[S.sd.length-1];
-    const b=o.usd?(o.nat?+last.usd_balance:-last.usd_balance):(o.nat?+last.balance:-last.balance);
+    const det=!!(o.partner&&o.det),p=o.partner?S.parts.find(x=>x.id==o.partner):null,last=S.sd[S.sd.length-1],A=S.sacc||stmtAcc(o);
     S.pdfWho=p?p.name:'';
-    const txt=`مرحباً${p?' '+p.name:''}،\nمرفق كشف حساب${det?' تفصيلي':''} من ${f} إلى ${t} من ${S.shop.name}.\nالرصيد: ${fmt(b)} ${o.usd?'$':'ل.س'}`;
+    const txt=`مرحباً${p?' '+p.name:''}،\nمرفق كشف حساب${det?' تفصيلي':''} من ${f} إلى ${t} من ${S.shop.name}.\nالرصيد: ${fmt(A.bal(last))} ${A.unit}`;
     pdfDialog(await pdfBuild(stmtPages(o,f,t,S.sd,det)),`statement-${f}_${t}.pdf`,txt,p?p.phone||'':'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
 }
@@ -1291,21 +1306,32 @@ function stmtMode(d){
   $('#sm1').className='b '+(d?'s':'');$('#sm2').className='b '+(d?'':'s');
   stmtLoad()
 }
+function stmtHead(A,last){
+  const o=S.sc;
+  return (A.lbl&&o.partner?`<div class=m style="margin:6px 0">${esc(A.lbl.trim())}</div>`:'')+(last?`<div class=it><span><b>الرصيد في نهاية الفترة</b></span><b>${A.sym}${fmt(A.bal(last))}${A.sym?'':' ل.س'}</b></div>`:'')
+}
 async function stmtLoadDet(o,f,t){
   const {data,error}=await db.rpc('partner_statement_detail',{p_shop:S.shop.id,p_partner:o.partner,p_from:f,p_to:t});
   if(error)return toast(error.message);
   S.sd=data||[];
-  const bal=x=>o.nat?+x.balance:-x.balance,cu=c=>c=='USD'?'$':'ل.س';
-  $('#sr').innerHTML=S.sd.map(x=>{const it=x.items&&x.items.length;
-    return `<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):'')}<br><b>${fmt(bal(x))}</b></span></div>${it?`<div class=m style="margin-top:6px;padding-inline-start:12px">${x.items.map(i=>esc(i.n)+' — '+fmt(i.q)+' × '+fmt(i.p)+' = '+fmt(i.t)).join('<br>')}<br><b>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</b></div>`:''}</div>`}).join('')||'<div class=m>لا حركات</div>'
+  let A;
+  if(o.cur==='USD'&&o.pcur==='USD'){
+    const {data:a}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:null,p_partner:o.partner,p_from:f,p_to:t});
+    const same=a&&a.length===S.sd.length&&a.every((r,i)=>r.entry_date===S.sd[i].entry_date&&(r.description||'')===(S.sd[i].description||''));
+    if(same){S.sd.forEach((r,i)=>{r.usd_debit=a[i].usd_debit;r.usd_credit=a[i].usd_credit;r.usd_balance=a[i].usd_balance});A=stmtAcc(o)}
+    else{A=stmtAcc({...o,cur:'SYP'});A.lbl=' (تعذّر عرض الكشف التفصيلي بالدولار الأصلي، معروض بالليرة)'}
+  }else A=stmtAcc(o);
+  S.sacc=A;
+  const cu=c=>c=='USD'?'$':'ل.س';
+  $('#sr').innerHTML=stmtHead(A,S.sd.length?S.sd[S.sd.length-1]:null)+(S.sd.map(x=>{const it=x.items&&x.items.length,d=A.dr(x),c=A.cr(x);
+    return `<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${d?'مدين '+A.sym+fmt(d):(c?'دائن '+A.sym+fmt(c):'')}<br><b>${A.sym}${fmt(A.bal(x))}</b></span></div>${it?`<div class=m style="margin-top:6px;padding-inline-start:12px">${x.items.map(i=>esc(i.n)+' — '+fmt(i.q)+' × '+fmt(i.p)+' = '+fmt(i.t)).join('<br>')}<br><b>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</b></div>`:''}</div>`}).join('')||'<div class=m>لا حركات</div>')
 }
 function stmtPrintDet(){
-  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null;
-  const bal=x=>o.nat?+x.balance:-x.balance,cu=c=>c=='USD'?'$':'ل.س';
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)} (تفصيلي)</div><div style="text-align:center">${f} ← ${t}</div><hr>
-  <table>${S.sd.map(x=>{const it=x.items&&x.items.length;
-    return `<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(bal(x))}`+(it?`<tr><td colspan=5 style="font-size:10px;padding-inline-start:10px">${x.items.map(i=>esc(i.n)+' '+fmt(i.q)+'×'+fmt(i.p)+'='+fmt(i.t)).join('<br>')}<br>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</td></tr>`:'')}).join('')}</table><hr>
-  <b>الرصيد: ${last?fmt(bal(last)):0}</b>`;
+  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null,A=S.sacc||stmtAcc(o),cu=c=>c=='USD'?'$':'ل.س';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)} (تفصيلي)${esc(A.lbl)}</div><div style="text-align:center">${f} ← ${t}</div><hr>
+  <table>${S.sd.map(x=>{const it=x.items&&x.items.length,d=A.dr(x),c=A.cr(x);
+    return `<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${d?fmt(d):''}<td>${c?fmt(c):''}<td>${fmt(A.bal(x))}`+(it?`<tr><td colspan=5 style="font-size:10px;padding-inline-start:10px">${x.items.map(i=>esc(i.n)+' '+fmt(i.q)+'×'+fmt(i.p)+'='+fmt(i.t)).join('<br>')}<br>إجمالي الفاتورة ${fmt(x.doc_total)} ${cu(x.doc_cur)} · المدفوع ${fmt(x.doc_paid)} ${cu(x.doc_cur)}</td></tr>`:'')}).join('')}</table><hr>
+  <b>الرصيد: ${last?A.sym+fmt(A.bal(last))+(A.sym?'':' ل.س'):0}</b>`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
@@ -1315,17 +1341,16 @@ async function stmtLoad(){
   if(o.partner&&o.det)return stmtLoadDet(o,f,t);
   const {data,error}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:o.account||null,p_partner:o.partner||null,p_from:f,p_to:t});
   if(error)return toast(error.message);
-  S.sd=data||[];
-  const bal=x=>o.nat?+x.balance:-x.balance,ub=x=>o.nat?+x.usd_balance:-x.usd_balance;
-  $('#sr').innerHTML=S.sd.map(x=>`<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${o.usd?(+x.usd_debit?'مدين $'+fmt(x.usd_debit):(+x.usd_credit?'دائن $'+fmt(x.usd_credit):'')):(+x.debit?'مدين '+fmt(x.debit):(+x.credit?'دائن '+fmt(x.credit):''))}<br><b>${o.usd?'$'+fmt(ub(x)):fmt(bal(x))}</b>${o.usd?`<br><span class=m>${fmt(bal(x))} ل.س</span>`:''}</span></div>`).join('')||'<div class=m>لا حركات</div>'
+  S.sd=data||[];const A=S.sacc=stmtAcc(o);
+  $('#sr').innerHTML=stmtHead(A,S.sd.length?S.sd[S.sd.length-1]:null)+(S.sd.map(x=>{const d=A.dr(x),c=A.cr(x);
+    return `<div class=it><span>${x.entry_date}<br><span class=m>${esc(x.description||'')}</span></span><span style="text-align:end">${d?'مدين '+A.sym+fmt(d):(c?'دائن '+A.sym+fmt(c):'')}<br><b>${A.sym}${fmt(A.bal(x))}</b>${A.sub?`<br><span class=m>${fmt(A.sub(x))} ${A.subSym}</span>`:''}</span></div>`}).join('')||'<div class=m>لا حركات</div>')
 }
 function stmtPrint(){
   if(S.sc.partner&&S.sc.det)return stmtPrintDet();
-  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null;
-  const bal=x=>o.nat?+x.balance:-x.balance,ub=x=>o.nat?+x.usd_balance:-x.usd_balance;
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)}${o.usd?' (بالدولار)':''}</div><div style="text-align:center">${f} ← ${t}</div><hr>
-  <table>${S.sd.map(x=>o.usd?`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.usd_debit?fmt(x.usd_debit):''}<td>${+x.usd_credit?fmt(x.usd_credit):''}<td>${fmt(ub(x))}`:`<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${+x.debit?fmt(x.debit):''}<td>${+x.credit?fmt(x.credit):''}<td>${fmt(bal(x))}`).join('')}</table><hr>
-  <b>الرصيد: ${last?(o.usd?'$'+fmt(ub(last))+' ('+fmt(bal(last))+' ل.س)':fmt(bal(last))):0}</b>`;
+  const o=S.sc,f=$('#sf').value,t=$('#st').value,last=S.sd.length?S.sd[S.sd.length-1]:null,A=S.sacc||stmtAcc(o);
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${esc(o.title)}${esc(A.lbl)}</div><div style="text-align:center">${f} ← ${t}</div><hr>
+  <table>${S.sd.map(x=>{const d=A.dr(x),c=A.cr(x);return `<tr><td>${x.entry_date}<td>${esc(x.description||'')}<td>${d?fmt(d):''}<td>${c?fmt(c):''}<td>${fmt(A.bal(x))}`}).join('')}</table><hr>
+  <b>الرصيد: ${last?A.sym+fmt(A.bal(last))+(A.sub?' ('+fmt(A.sub(last))+' ل.س)':(A.sym?'':' ل.س')):0}</b>`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
@@ -1465,47 +1490,111 @@ const GUIDE=[
 {t:'🚀 البدء السريع (للمالك)',o:1,h:`<ol>
 <li>اضغط <b>حساب جديد</b> وسجّل بإيميلك وكلمة سر، ثم أنشئ محلك. لديك تجربة مجانية 14 يوماً.</li>
 <li>اضغط زر <b>$</b> أعلى الصفحة وأدخل سعر الدولار بالليرة. حدّثه كلما تغيّر السعر.</li>
-<li>من تبويب <b>المنتجات</b> أضف منتجاتك.</li>
+<li>من تبويب <b>المنتجات</b> أضف منتجاتك (الاسم، الوحدة الأساسية، الأسعار). بعد الحفظ تُفتح صفحة المادة لتضيف <b>وحدات</b> (طرد، كرتونة...) و<b>عروضاً</b> إن أردت.</li>
 <li>سجّل بضاعتك: إما بفاتورة <b>شراء</b>، أو بـ<b>مخزون افتتاحي</b> (تبويب المخزون) إذا كانت البضاعة موجودة قبل استخدام البرنامج.</li>
 <li>أضف الزبائن والموردين من تبويب <b>الديون</b> (أو بزر ＋ داخل الفاتورة)، وسجّل أرصدتهم القديمة إن وجدت.</li>
-<li>ابدأ <b>البيع</b>.</li></ol>`},
+<li>ابدأ <b>البيع</b>، وراجع <b>التقارير</b> آخر كل يوم.</li></ol>`},
 {t:'🔑 تسجيل الدخول والكاشير',o:0,h:`<ul>
 <li>ادخل بالإيميل وكلمة السر. لا تشارك كلمة السر مع أحد.</li>
-<li><b>للكاشير:</b> اضغط "حساب جديد" بإيميلك، ثم اطلب من المالك إضافتك (تبويب الفريق)، ثم اضغط "تحديث".</li></ul>`},
+<li><b>للكاشير:</b> اضغط «حساب جديد» بإيميلك، ثم اطلب من المالك إضافتك (تبويب الفريق)، ثم اضغط «تحديث».</li>
+<li>تظهر لك التبويبات المسموحة لك فقط حسب الصلاحيات التي حدّدها المالك.</li></ul>`},
+{t:'🏠 الشاشة الرئيسية والتنقل',o:0,h:`<ul>
+<li>الشريط السفلي فيه أهم أربعة تبويبات، وزر <b>المزيد</b> يفتح القائمة الكاملة مرتّبة في مجموعات: العمليات، المخزون والإنتاج، المالية، الإدارة.</li>
+<li>الشاشة الرئيسية فيها <b>اختصارات</b> سريعة للشاشات التي تستخدمها كثيراً. اضغط زر الاختصارات لتختار حتى 8 اختصارات إضافية.</li>
+<li>تظهر في الرئيسية تنبيهات المواد التي نقص مخزونها عن حدّ التنبيه، وتنبيه قرب انتهاء الاشتراك، وبطاقات ملخص حسب صلاحياتك.</li>
+<li>الشريط الثابت أعلى الصفحة يعرض رصيد <b>الصندوق</b> و<b>صندوق الدولار</b> (لمن لديه الصلاحية). اضغط عليه لتحديثه.</li>
+<li>زر <b>$</b> أعلى الصفحة يفتح <b>إدارة العملات وأسعار الصرف</b> (للمالك).</li></ul>`},
 {t:'📦 المنتجات',o:0,h:`<ul>
-<li><b>المالك</b> يضيف المنتج: الاسم، الباركود (اكتبه أو اضغط 📷 لمسحه)، سعر البيع والعملة، وحد التنبيه للمخزون.</li>
-<li>اضغط على المنتج لتعديله أو حذفه. الحذف يخفيه من القوائم، والفواتير القديمة تبقى محفوظة.</li>
-<li>الكمية لا تُكتب يدوياً: تتغيّر تلقائياً بالشراء والبيع والجرد.</li>
-<li><b>الكاشير</b> يرى المنتجات وأسعارها وكمياتها فقط.</li></ul>`},
+<li><b>إضافة منتج:</b> الاسم، الباركود (اكتبه أو اضغط 📷 لمسحه)، <b>الوحدة الأساسية</b> (قطعة، كيلو، متر...)، أسعار البيع، عملة الأسعار، وحدّ التنبيه للمخزون.</li>
+<li>للمنتج ثلاثة أسعار: <b>المفرق</b> و<b>نصف الجملة</b> و<b>الجملة</b>. يُختار السعر تلقائياً حسب تسعيرة الزبون المسجّلة في بياناته.</li>
+<li>بعد حفظ منتج جديد تُفتح <b>صفحة تعديله</b>، وفي أسفلها قسما <b>وحدات الكمية</b> و<b>العروض التجارية</b> الخاصان به.</li>
+<li>اضغط على أي منتج لتعديله أو حذفه. الحذف يخفيه من القوائم، والفواتير القديمة تبقى محفوظة.</li>
+<li>الكمية لا تُكتب يدوياً: تتغيّر تلقائياً بالشراء والبيع والجرد، وتُحفظ دائماً بالوحدة الأساسية.</li>
+<li><b>الكاشير</b> يرى المنتجات وأسعارها وكمياتها فقط، ما لم يملك صلاحية إدارة المنتجات.</li></ul>`},
+{t:'📏 وحدات الكمية (طرد، قطعة، كيلو...)',o:0,h:`<p class=m>تتيح لك البيع والشراء بوحدات مختلفة للمادة نفسها، مع بقاء المخزون محسوباً بوحدة واحدة هي الوحدة الأساسية.</p>
+<ol>
+<li>افتح المادة من <b>المنتجات</b> واضغط عليها، وانزل إلى قسم <b>وحدات الكمية</b>.</li>
+<li>تأكد من <b>الوحدة الأساسية</b> (مثلاً: قطعة).</li>
+<li>اكتب اسم الوحدة الجديدة (مثلاً: طرد) وكم تساوي من الوحدة الأساسية (مثلاً: 24)، ثم اضغط <b>إضافة وحدة</b>.</li></ol>
+<ul>
+<li><b>في الفاتورة:</b> تظهر بجانب سعر كل بند قائمة لاختيار الوحدة (إن كانت للمادة وحدات إضافية). عند اختيار «طرد» يتحوّل السعر تلقائياً إلى سعر القطعة × 24، ويمكنك تعديله يدوياً.</li>
+<li><b>مثال:</b> بعت 3 طرد، فتُخصم 72 قطعة من المخزون، وتُحسب القيمة بسعر الطرد الذي أمامك.</li>
+<li>المخزون والتنبيهات والجرد تُعرض بالوحدة الأساسية دائماً.</li>
+<li>تظهر الوحدة بجانب الكمية في تفاصيل الفاتورة والطباعة وملف PDF (مثل: 3 طرد × 12,000). الفواتير القديمة تُعرض بالوحدة الأساسية للمادة.</li>
+<li>حذف وحدة يحذف معها العروض المرتبطة بها، ولا يؤثر على الفواتير السابقة.</li></ul>`},
+{t:'🎁 العروض التجارية',o:0,h:`<p class=m>عرض يمنح كمية مجانية تلقائياً، مثل: <b>مع كل طرد قطعة مجاناً</b>.</p>
+<p><b>كيف تضيف عرضاً:</b></p>
+<ol>
+<li>إما من <b>المزيد ← العروض التجارية</b> (قسم خاص يعرض كل عروض الأصناف) وتختار المادة من نموذج «إضافة عرض جديد».</li>
+<li>أو من صفحة تعديل المادة، قسم «العروض التجارية».</li>
+<li>حدّد: <b>يسري العرض</b> (البيع، الشراء، أو كليهما)، وكمية الشراء أو البيع مع وحدتها (مثلاً 1 طرد)، والكمية المجانية مع وحدتها (مثلاً 1 قطعة).</li></ol>
+<p><b>قسم العروض التجارية:</b> يعرض كل عروض الأصناف مجمّعة حسب المادة، مع البحث بالاسم، وخيار «العروض الفعّالة فقط». لمن يملك صلاحية المنتجات: إضافة وإيقاف وتفعيل وحذف، والضغط على اسم المادة يفتح صفحتها.</p>
+<p><b>في الفاتورة:</b></p>
+<ul>
+<li>عند وصول الكمية لشرط العرض يظهر تحت البند سطر <b>🎁 +X مجاناً</b> وتُضاف الكمية المجانية تلقائياً بسعر صفر.</li>
+<li>العرض يُطبَّق لكل مضاعف كامل: مع كل 1 طرد قطعة، فإذا بعت 3 طرود تأخذ 3 قطع مجاناً.</li>
+<li>للمادة أكثر من عرض؟ يُطبَّق العرض الأفضل للزبون فقط، ولا تتراكم العروض.</li>
+<li><b>لعدم اعتماد العرض في هذه الفاتورة</b> اضغط <b>عدم اعتماد العرض</b> تحت البند. وللرجوع اضغط <b>اعتماد العرض</b>. هذا القرار للفاتورة الحالية فقط ولا يغيّر العرض نفسه.</li>
+<li>الكمية المجانية تُخصم من المخزون، فإن لم يكفِ المخزون ترفض الفاتورة: قلّل الكمية أو لا تعتمد العرض.</li>
+<li>عند <b>تعديل</b> فاتورة قديمة لا يُعاد تطبيق العروض، وتظهر الكمية المجانية القديمة كبند مستقل بسعر صفر يمكنك تعديله أو حذفه.</li></ul>
+<p><b>الأثر المحاسبي:</b> في البيع تُحسب تكلفة الكمية المجانية ضمن تكلفة البضاعة المباعة. وفي الشراء (بضاعة مجانية من المورد) تنخفض متوسط تكلفة المادة تلقائياً.</p>`},
 {t:'🛒 البيع',o:0,h:`<ol>
 <li>ابحث بالاسم أو الباركود، أو اضغط 📷 لمسح المنتجات تباعاً (اضغط إغلاق عند الانتهاء).</li>
-<li>اضغط على المنتج ليُضاف للفاتورة، وعدّل الكمية أو السعر من الفاتورة نفسها.</li>
+<li>اضغط على المنتج ليُضاف للفاتورة، وعدّل الكمية أو السعر من الفاتورة نفسها. إن كانت للمادة <b>وحدات</b> اختر الوحدة (طرد، قطعة...) من القائمة بجانب السعر.</li>
 <li>اختر العملة: ليرة أو دولار.</li>
-<li>اختر الزبون (اختياري للبيع النقدي). لإضافة زبون جديد اضغط ＋.</li>
-<li>اختر <b>الدفع</b>: نقداً بالكامل، أو <b>آجل (بدون دفعة)</b>، أو دفعة جزئية والباقي آجل. البيع الآجل يحتاج اختيار الزبون.</li>
-<li>اضغط <b>تسجيل البيع</b>. فعّل "طباعة الوصل بعد البيع" إذا تريد الطباعة تلقائياً.</li></ol>`},
+<li>اختر الزبون (اختياري للبيع النقدي). لإضافة زبون جديد اضغط ＋. تُحدَّد الأسعار حسب <b>تسعيرة الزبون</b> (مفرق، نصف جملة، جملة)، وتتبع الفاتورة عملة حساب الزبون.</li>
+<li>راقب <b>العروض</b>: إن ظهر 🎁 تحت بند فهي كمية مجانية، ويمكنك عدم اعتمادها بزر «عدم اعتماد العرض».</li>
+<li>لإضافة <b>ملاحظة على بند</b> (مثل: لون، مقاس، تعليمة تسليم) اضغط <b>+ ملاحظة</b> تحت البند واكتبها. تظهر في تفاصيل الفاتورة والطباعة وPDF.</li>
+<li>إن أردت <b>حسماً</b> اكتبه في حقل «الحسم الممنوح للزبون» (مبلغ أو %). تعرف التفاصيل في قسم «الحسم».</li>
+<li>اختر <b>الدفع</b>: نقداً بالكامل، أو <b>آجل (بدون دفعة)</b>، أو دفعة جزئية والباقي آجل. البيع الآجل يحتاج اختيار الزبون. المبلغ المحسوب هو <b>الصافي بعد الحسم</b>.</li>
+<li>اضغط <b>تسجيل البيع</b>. فعّل «طباعة الوصل بعد البيع» إذا تريد الطباعة تلقائياً.</li></ol>`},
+{t:'🏷️ الحسم في فواتير البيع والشراء',o:0,h:`<p class=m>يظهر حقل الحسم أسفل بنود الفاتورة بعد إضافة أول بند.</p>
+<ul>
+<li>اكتب الحسم كـ<b>مبلغ</b> أو كـ<b>نسبة %</b> باختيارك من القائمة بجانب الحقل. يظهر أسفله: المجموع − الحسم = الصافي.</li>
+<li>يجب أن يكون الحسم <b>أقل من إجمالي الفاتورة</b>.</li>
+<li><b>في فاتورة البيع</b> يُرحَّل الحسم إلى حساب <b>الحسم الممنوح</b> (يُعدّ من المصاريف). <b>في فاتورة الشراء</b> يُرحَّل إلى حساب <b>الحسم المكتسب</b> (يُعدّ من الإيرادات). يُنشأ الحسابان تلقائياً أول مرة تستخدم فيها الحسم.</li>
+<li><b>مثال بيع:</b> إجمالي 100,000 وحسم 10% = 10,000، فالصافي 90,000. إن دفع الزبون 50,000 يبقى عليه 40,000 آجلاً. تُسجَّل المبيعات 100,000 والحسم الممنوح 10,000.</li>
+<li><b>مثال شراء:</b> إجمالي 500,000 وحسم 20,000، فالمستحق للمورد 480,000. يدخل المخزون بقيمته قبل الحسم، ويُسجَّل الحسم المكتسب 20,000 إيراداً.</li>
+<li>رصيد الزبون أو المورد وكشف حسابه يُحسبان على <b>الصافي</b>.</li>
+<li>يظهر الحسم في تفاصيل الفاتورة والطباعة وملف PDF: المجموع قبل الحسم، ثم الحسم، ثم الصافي.</li>
+<li><b>تعديل أو إلغاء</b> الفاتورة يعكس الحسم تلقائياً مع باقي القيد.</li>
+<li>في التقارير: الحسم الممنوح ضمن المصاريف، والحسم المكتسب يظهر كسطر «إيرادات أخرى» ويدخل في صافي الربح.</li>
+<li><b>تنبيه:</b> عند عمل مرتجع لفاتورة عليها حسم تُحسب قيمة المرتجع بسعر البند قبل الحسم. راجع المبلغ والتسوية النقدية قبل الحفظ.</li></ul>`},
 {t:'📥 الشراء',o:1,h:`<ul>
 <li>نفس خطوات البيع، لكن تُدخل <b>سعر التكلفة</b> لكل وحدة، وتختار <b>المورد</b> إذا كان الشراء آجلاً.</li>
+<li>يمكنك الشراء بوحدة أكبر (مثل الطرد) فيتحوّل التكلفة تلقائياً إلى تكلفة الوحدة الأساسية في المخزون.</li>
+<li>إن سجّلت للمورد <b>أسعاراً خاصة</b> (من صفحته ← أسعار المورد) تظهر تكلفة المواد عنده تلقائياً عند اختياره.</li>
+<li><b>الحسم المكتسب:</b> اكتب ما حسمه لك المورد في حقل الحسم، فيُرحَّل إلى حساب الحسم المكتسب ويقلّل المبلغ المستحق للمورد.</li>
+<li><b>العروض:</b> إن كان للمادة عرض شراء (مثلاً بضاعة مجانية مع كل طرد) تُضاف الكمية المجانية لمخزونك بتكلفة صفر، فيخفض ذلك متوسط تكلفة المادة. يمكنك عدم اعتماده من زر «عدم اعتماد العرض».</li>
 <li>سعر التكلفة هو الذي يحدد ربحك، فتأكد منه. التكلفة تُحسب بمتوسط مرجح عند تكرار الشراء.</li></ul>`},
 {t:'💳 الديون وكشف الحساب',o:1,h:`<ul>
 <li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا) والأطراف التي هي زبون ومورد معاً (رصيدان).</li>
+<li>عند إضافة طرف حدّد <b>نوعه</b>، و<b>تسعيرة الزبون</b> (مفرق، نصف جملة، جملة)، و<b>عملة حسابه</b> (ليرة أو دولار).</li>
 <li>في كشف حساب الزبون أو المورد اختر <b>مختصر</b> (الحركات فقط) أو <b>تفصيلي (بالمواد)</b> لترى تحت كل فاتورة موادها وكمياتها وأسعارها وإجماليها والمدفوع منها، ويمكنك طباعة أي منهما.</li>
+<li><b>عملة الكشف:</b> يفتح كشف الزبون أو المورد بعملة حسابه المسجّلة. وبالزرين <b>بالليرة / بالدولار</b> أعلى الكشف تغيّر العرض. حساب الدولار يُعرض بالليرة بقيمة كل عملية وقت تسجيلها، وحساب الليرة يُعرض بالدولار محوّلاً بسعر الصرف الحالي (يُكتب السعر أعلى الكشف). الطباعة وPDF تتبعان العملة المعروضة.</li>
 <li>اضغط على الاسم: ترى كشف الحساب (بفترة من/إلى وطباعة)، وتسجّل <b>سند قبض</b> من الزبون أو <b>سند دفع</b> للمورد، أو <b>رصيد افتتاحي</b> لدين قديم.</li></ul>`},
 {t:'🧾 الفواتير',o:0,h:`<ul>
-<li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها ولطباعتها مجدداً.</li>
-<li><b>المالك فقط:</b> زر <b>تعديل</b> يفتح الفاتورة للتعديل (تُلغى القديمة وتُسجَّل الجديدة تلقائياً)، وزر <b>إلغاء</b> يعكس الفاتورة ويعيد المخزون.</li>
+<li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها (وتفاصيل الحسم إن وُجد) ولطباعتها مجدداً.</li>
+<li>البنود المجانية من العروض تظهر بسعر صفر وعليها علامة «مجاني». وتظهر لكل بند وحدته (طرد، قطعة...) وملاحظته إن وُجدت، في العرض والطباعة وPDF.</li>
+<li><b>المالك فقط:</b> زر <b>تعديل</b> يفتح الفاتورة للتعديل (تُلغى القديمة وتُسجَّل الجديدة تلقائياً مع حسمها)، وزر <b>إلغاء</b> يعكس الفاتورة ويعيد المخزون.</li>
 <li>زر <b>📄 إرسال PDF عبر واتساب</b> بصفحة الفاتورة: يجهّز ملف PDF بترويسة شركتك، ثم اختر <b>إرسال عبر واتساب</b> وحدّد جهة الاتصال، أو <b>فتح محادثة</b> الزبون برسالة جاهزة وأرفق الملف. وكذلك بكشف الحساب (المختصر والتفصيلي).</li>
 <li>الفاتورة الملغاة تبقى ظاهرة مشطوبة حفاظاً على السجل. تعديل أو إلغاء فاتورة شراء يُرفض إذا بِعتَ جزءاً من بضاعتها.</li></ul>`},
+{t:'↩️ المرتجعات (للمالك)',o:1,h:`<ul>
+<li>من تفاصيل الفاتورة اضغط <b>مرتجع مبيع</b> أو <b>مرتجع شراء</b>. المرتجع مستند مستقل لا يلغي الفاتورة.</li>
+<li>أدخل الكمية المرتجعة لكل بند. تعود البضاعة إلى المستودع الأصلي، ولا يُسمح بتجاوز الكمية الأصلية أو ما أُرجع سابقاً.</li>
+<li>اكتب المبلغ النقدي المعاد للزبون (أو المستلم من المورد). والباقي يُسوّى على حساب الطرف. وإن كانت الفاتورة بلا طرف فيجب أن يساوي المبلغ كامل قيمة المرتجع.</li>
+<li>قائمة كل المرتجعات من تبويب الفواتير ← <b>مرتجعات البيع والشراء</b>.</li>
+<li>المرتجعات تحتاج إنترنت، ولا يتوفر تعديل أو إلغاء المرتجع بعد حفظه، فراجع الكميات والمبلغ قبل التأكيد.</li>
+<li>إن انقطع الاتصال أثناء الحفظ ولم تُعرف النتيجة، افتح قائمة المرتجعات وأعد إرسال الطلب نفسه ولا تنشئ بديلاً عنه.</li></ul>`},
 {t:'🏬 المخزون والمستودعات',o:1,h:`<ul>
 <li>من تبويب <b>المخزون</b>: اختر المستودع الحالي، أضف مستودعاً جديداً، أو حوّل بضاعة بين مستودعين.</li>
-<li><b>الجرد:</b> اضغط على المنتج وأدخل الكمية الفعلية الموجودة، فيسوّي البرنامج الفرق ويسجّله كخسارة أو ربح جرد.</li>
+<li><b>الجرد:</b> اضغط على المنتج وأدخل الكمية الفعلية الموجودة (بالوحدة الأساسية)، فيسوّي البرنامج الفرق ويسجّله كخسارة أو ربح جرد.</li>
 <li><b>مخزون افتتاحي:</b> لتسجيل بضاعة موجودة مسبقاً بدون التأثير على الصندوق. استخدمه مرة واحدة لكل منتج.</li>
 <li>الفواتير تُسجَّل على المستودع المختار. إذا بِعتَ من مستودع رصيده أقل يظهر رصيده بالسالب تنبيهاً: صحّحه بالتحويل أو اختر المستودع الصحيح.</li></ul>`},
 {t:'📊 التقارير',o:1,h:`<ul>
 <li>الملخص: الصندوق، ذمم الزبائن، قيمة المخزون، ذمم الموردين، المبيعات، وصافي الربح.</li>
-<li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ.</li>
-<li>المصاريف والسندات وتصريف الدولار من تبويب <b>السندات</b>، والنسخ الاحتياطي من تبويبه المستقل.</li>
-</ul>`},
+<li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ. المبيعات تُعرض بالإجمالي قبل الحسم، والحسم الممنوح ضمن المصاريف، والحسم المكتسب كسطر «إيرادات أخرى».</li>
+<li>المصاريف والسندات وتصريف الدولار من تبويب <b>السندات</b>، والنسخ الاحتياطي من تبويبه المستقل.</li></ul>`},
 {t:'🏭 التصنيع',o:1,h:`<ol>
 <li>عرّف المواد الخام والمنتج الجاهز في تبويب المنتجات، وسجّل مخزون المواد الخام.</li>
 <li>من تبويب <b>التصنيع</b> اكتب <b>الوصفة</b>: المواد اللازمة لوحدة واحدة من المنتج الجاهز.</li>
@@ -1514,6 +1603,7 @@ const GUIDE=[
 {t:'📒 الحسابات (للمحاسبين)',o:1,h:`<ul>
 <li>تبويب <b>الحسابات</b> يعرض شجرة الحسابات. اضغط على أي حساب (أو صندوق) لترى كشف حسابه بفترة من/إلى مع الطباعة.</li>
 <li>يمكنك إضافة حساب تحت مجموعة، وإنشاء صناديق إضافية والتحويل بينها، وتسجيل سند أو قيد بين حسابين، واستيراد دليل حسابات جاهز.</li>
+<li>حسابا <b>الحسم الممنوح</b> (مصاريف) و<b>الحسم المكتسب</b> (إيرادات) يُنشآن تلقائياً عند أول فاتورة بحسم، وتجد فيهما كل الحسومات مع تاريخها.</li>
 <li>لا تعدّل الشجرة إلا إذا كنت تعرف المحاسبة. حسابات البرنامج الأساسية (الصندوق، الزبائن، المخزون، المبيعات...) تستطيع تغيير اسمها ورقمها بأمان.</li></ul>`},
 {t:'💰 القبض من الزبائن والدفع للموردين',o:1,h:`<ul>
 <li>تبويب <b>القبض والدفع</b>: اختر <b>قبض من زبون</b> أو <b>دفع لمورد</b>، ثم الطرف. يظهر لك دينه بالليرة وبالدولار.</li>
@@ -1523,26 +1613,26 @@ const GUIDE=[
 <li>في القائمة تحتها: 🖨 لطباعة السند، و<b>إلغاء</b> لعكسه ويعود رصيد الطرف كما كان.</li></ul>`},
 {t:'🧾 السندات الأخرى (مصروف وتصريف)',o:1,h:`<ul>
 <li>تبويب <b>السندات</b> للمصروفات وتصريف الدولار (شراء أو بيع الدولار بالليرة، يحرّك صندوق الليرة وصندوق الدولار معاً)، مع قائمة آخر السندات للطباعة أو الإلغاء.</li>
-<li><b>الزبون والمورد معاً:</b> عند إضافة الطرف اختر "زبون ومورد معاً" (أو غيّر نوعه من صفحته بزر تعديل). يظهر في البيع والشراء، ويقبل منه ويدفع له، وله رصيدان: لنا عليه وله علينا. ولتسوية الرصيدين ببعضهما اضغط <b>مقاصة</b> من صفحته.</li></ul>`},
-{t:'💵 صندوق الدولار',o:1,h:`<ul>
+<li><b>الزبون والمورد معاً:</b> عند إضافة الطرف اختر «زبون ومورد معاً» (أو غيّر نوعه من صفحته بزر تعديل). يظهر في البيع والشراء، ويقبل منه ويدفع له، وله رصيدان: لنا عليه وله علينا. ولتسوية الرصيدين ببعضهما اضغط <b>مقاصة</b> من صفحته.</li></ul>`},
+{t:'💵 صندوق الدولار والعملات',o:1,h:`<ul>
 <li>للدولار صندوق مستقل اسمه <b>صندوق الدولار</b>. كل فاتورة نقدية بالدولار، وسند قبض أو دفع أو مصروف بالدولار، يدخل إليه أو يخرج منه تلقائياً. والعمليات بالليرة تمرّ على صندوق الليرة.</li>
 <li>رصيده يظهر <b>بالدولار</b> وبما يعادله بالليرة (حسب سعر كل عملية) في تبويب الحسابات وفي التقارير، وكشف حسابه بالدولار مع طباعة.</li>
 <li>لشراء أو بيع الدولار بالليرة استخدم <b>تصريف دولار</b> من تبويب السندات: يحرّك الصندوقين معاً.</li>
-<li>الدفاتر تبقى بالليرة، فلا تنسَ تحديث سعر الدولار (زر $ أعلى الصفحة).</li>
-<li><b>شريط أرصدة الصناديق</b> ثابت أعلى الصفحة في كل الشاشات (لمن لديه صلاحية السندات أو التقارير أو الحسابات). يتحدّث بعد كل عملية، واضغط عليه لتحديثه يدوياً. بدون إنترنت أو مع عمليات معلّقة ينبّهك أن الأرصدة غير محدّثة.</li></ul>`},
+<li>الدفاتر تبقى بالليرة، فلا تنسَ تحديث سعر الدولار (زر $ أعلى الصفحة، وهو يفتح إدارة العملات).</li>
+<li><b>شريط أرصدة الصناديق</b> ثابت أعلى الصفحة في كل الشاشات (لمن لديه صلاحية السندات أو التقارير أو الحسابات). يتحدّث بعد كل عملية. بدون إنترنت أو مع عمليات معلّقة ينبّهك أن الأرصدة غير محدّثة.</li></ul>`},
+{t:'📝 المفكرة والمهام',o:0,h:`<ul>
+<li>من <b>المزيد ← المفكرة</b> سجّل ملاحظاتك ومهامك: عنوان، وتفاصيل، وتاريخ تذكير اختياري.</li>
+<li>اضغط على الملاحظة لتعديلها، وعلّمها منجزة عند انتهائها. تُرتَّب المهام غير المنجزة أولاً حسب تاريخ التذكير.</li></ul>`},
 {t:'🏢 بيانات الشركة',o:1,h:`<ul>
 <li>من تبويب <b>بيانات الشركة</b> (للمالك) اكتب العنوان وأرقام الهاتف وملاحظة اختيارية.</li>
 <li>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة، والملاحظة أسفلها.</li>
 <li><b>البدء من الصفر:</b> من نفس التبويب زر <b>تصفير الشركة</b> يحذف كل العمليات (ويمكنك الاحتفاظ بقوائم المنتجات والزبائن والموردين)، ويحفظ قبله نسخة أمان تتراجع منها. وزر <b>حذف الشركة نهائياً</b> يحذف كل شيء بلا تراجع. نزّل نسخة على جهازك قبل أيٍّ منهما.</li></ul>`},
-{t:'🛡️ النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
-<li>تبويب <b>النسخ الاحتياطي</b> (للمالك): نسخ تلقائية يومياً، ونسخة الآن، وتنزيل أي نسخة كملف على جهازك، واسترجاع من نسخة محفوظة أو من ملف.</li>
-<li>قبل أي استرجاع يحفظ البرنامج نسخة بحالتك الحالية لتتراجع إن أردت.</li>
-<li>نزّل نسخة على جهازك كل أسبوع، فالنسخ المحفوظة داخل النظام لا تغني عن نسخة خارجه.</li></ul>`},
 {t:'👥 المستخدمون والصلاحيات',o:1,h:`<ul>
-<li>من تبويب <b>الفريق</b> (للمالك): المستخدم ينشئ حساباً بإيميله من شاشة الدخول (زر "حساب جديد")، ثم تكتب إيميله وتضيفه.</li>
+<li>من تبويب <b>الفريق</b> (للمالك): المستخدم ينشئ حساباً بإيميله من شاشة الدخول (زر «حساب جديد»)، ثم تكتب إيميله وتضيفه.</li>
 <li>اختر صلاحياته بالمربعات أو بقالب جاهز (كاشير، أمين مستودع، محاسب، مدير). الصلاحيات: البيع، رؤية كل الفواتير، تعديل وإلغاء الفواتير، الشراء، إدارة المنتجات، رؤية التكلفة، المخزون، السندات والديون، التقارير والأرباح، الحسابات، التصنيع.</li>
-<li>تظهر لكل مستخدم التبويبات المسموحة له فقط، والمنع مطبّق من قاعدة البيانات نفسها. الفريق والنسخ الاحتياطي وبيانات الشركة للمالك وحده.</li>
-<li>لتثبيت مبيعات مستخدم على مستودع معين اختر مستودعه من نفس الشاشة. للتعديل لاحقاً افتح "الصلاحيات" تحت اسمه ثم احفظ.</li></ul>`},
+<li>صلاحية <b>إدارة المنتجات</b> تشمل تعريف الوحدات والعروض التجارية. أما رؤية العروض واستخدامها في الفواتير فمتاحة لمن يبيع أو يشتري.</li>
+<li>تظهر لكل مستخدم التبويبات المسموحة له فقط، والمنع مطبّق من قاعدة البيانات نفسها. الفريق والنسخ الاحتياطي وبيانات الشركة والمرتجعات للمالك وحده.</li>
+<li>لتثبيت مبيعات مستخدم على مستودع معين اختر مستودعه من نفس الشاشة. للتعديل لاحقاً افتح «الصلاحيات» تحت اسمه ثم احفظ.</li></ul>`},
 {t:'📄 إرسال الفواتير وكشوف الحساب PDF بالواتساب',o:0,h:`<ul>
 <li><b>فاتورة:</b> افتحها من تبويب الفواتير واضغط <b>📄 PDF / واتساب</b>.</li>
 <li><b>كشف حساب:</b> من صفحة الزبون أو المورد (تبويب الديون) اعرض الكشف (مختصر أو تفصيلي) ثم اضغط <b>📄 إرسال PDF عبر واتساب</b>.</li>
@@ -1550,33 +1640,46 @@ const GUIDE=[
 <li>واتساب لا يسمح لأي موقع بإرفاق الملف بمحادثة محددة تلقائياً، لذلك تختار جهة الاتصال بنفسك. سجّل أرقام هواتف الزبائن بالصيغة المحلية (مثل 0933...) لتعمل المحادثة المباشرة.</li>
 <li>أول مرة يحتاج إنترنت لتحميل مكتبة إنشاء PDF.</li></ul>`},
 {t:'📶 العمل بدون إنترنت وتثبيت التطبيق',o:0,h:`<ul>
-<li>إذا انقطع الإنترنت يظهر شريط أصفر أعلى الصفحة. تتابع البيع والشراء كالمعتاد، وتظهر رسالة تؤكد أن الفاتورة <b>حُفظت على جهازك وستُرحَّل تلقائياً عند عودة الاتصال</b> (ويمكنك طباعة الوصل). تجد العمليات المنتظرة في تبويب الفواتير.</li>
-<li><b>لا تسجّل الخروج</b> قبل أن تُرحَّل العمليات المنتظرة. وبقية الشاشات (التقارير، الحسابات...) تحتاج اتصالاً.</li>
+<li>إذا انقطع الإنترنت يظهر شريط أصفر أعلى الصفحة. تتابع البيع والشراء كالمعتاد (بما في ذلك الوحدات والعروض والحسم)، وتظهر رسالة تؤكد أن الفاتورة <b>حُفظت على جهازك وستُرحَّل تلقائياً عند عودة الاتصال</b> (ويمكنك طباعة الوصل). تجد العمليات المنتظرة في تبويب الفواتير.</li>
+<li><b>لا تسجّل الخروج</b> قبل أن تُرحَّل العمليات المنتظرة. وبقية الشاشات (التقارير، الحسابات، المرتجعات...) تحتاج اتصالاً.</li>
 <li><b>للتثبيت كتطبيق:</b> افتح الموقع من Chrome، واضغط زر <b>📲 تثبيت التطبيق</b> أسفل الصفحة إن ظهر، أو النقاط الثلاث ثم <b>تثبيت التطبيق</b>. على الآيفون: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.</li>
 <li>إذا لم يظهر خيار التثبيت اضغط <b>فحص التثبيت</b> في آخر هذه الصفحة ليخبرك ما الناقص.</li>
 <li>مسح الباركود بالكاميرا يطلب إذن الكاميرا أول مرة، ويحتاج إنترنت مرة واحدة لتحميله.</li></ul>`},
 {t:'💾 النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
-<li>يأخذ البرنامج <b>نسخة تلقائية يومياً</b> عند فتحك له، ويحتفظ بآخر 7 نسخ. وتجدها في <b>التقارير ← النسخ الاحتياطي والاسترجاع</b>.</li>
+<li>تبويب <b>النسخ الاحتياطي</b> (للمالك): يأخذ البرنامج <b>نسخة تلقائية يومياً</b> عند فتحك له، ويحتفظ بآخر 7 نسخ.</li>
 <li><b>إنشاء نسخة الآن</b> قبل أي عملية كبيرة، و<b>تنزيل على جهازي</b> لتحتفظ بملف خارج النظام (افعلها كل أسبوع).</li>
-<li><b>الاسترجاع:</b> اضغط "استرجاع" بجانب النسخة، أو اختر ملفاً محفوظاً. يستبدل كل بيانات المحل ببيانات النسخة، وكل ما سُجّل بعدها يُحذف. قبل الاسترجاع يأخذ البرنامج نسخة أمان تظهر بالقائمة، فتستطيع التراجع.</li>
-<li>أوقف الكاشير عن العمل أثناء الاسترجاع، وانتظر ترحيل أي عمليات بانتظار الإرسال قبله.</li></ul>`},
+<li><b>الاسترجاع:</b> اضغط «استرجاع» بجانب النسخة، أو اختر ملفاً محفوظاً. يستبدل كل بيانات المحل ببيانات النسخة، وكل ما سُجّل بعدها يُحذف. قبل الاسترجاع يأخذ البرنامج نسخة أمان تظهر بالقائمة، فتستطيع التراجع.</li>
+<li>أوقف الكاشير عن العمل أثناء الاسترجاع، وانتظر ترحيل أي عمليات بانتظار الإرسال قبله.</li>
+<li><b>ملاحظة:</b> الوحدات والعروض التجارية غير مشمولة بالنسخ الاحتياطي حالياً.</li></ul>`},
 {t:'🛡️ نصائح مهمة (للمالك)',o:1,h:`<ul>
-<li>نزّل <b>نسخة احتياطية</b> كل أسبوع (التقارير).</li>
+<li>نزّل <b>نسخة احتياطية</b> كل أسبوع.</li>
 <li>أنشئ للكاشير حساباً خاصاً ولا تعطه حسابك.</li>
 <li>راجع صندوقك وجرد بضاعتك دورياً وقارنهما بالواقع.</li>
+<li>راجع حسابي <b>الحسم الممنوح</b> و<b>الحسم المكتسب</b> دورياً لتعرف كم تمنح من حسومات وكم تكسب.</li>
 <li>بعد انتهاء الاشتراك تبقى بياناتك ظاهرة، لكن لا يمكن تسجيل عمليات جديدة حتى التجديد. تواصل معنا للتجديد.</li></ul>`},
 {t:'❓ مشاكل شائعة وحلولها',o:0,h:`<ul>
-<li><b>"الكمية غير كافية":</b> الكمية الإجمالية للمنتج ناقصة. سجّل شراءً أو اعمل جرداً (للمالك).</li>
+<li><b>«الكمية غير كافية»:</b> الكمية الإجمالية للمنتج ناقصة، وتشمل الكمية المجانية من العرض. سجّل شراءً أو اعمل جرداً (للمالك)، أو قلّل الكمية، أو اضغط «عدم اعتماد العرض».</li>
 <li><b>البيع الآجل يرفض:</b> اختر الزبون أو أضفه بزر ＋.</li>
-<li><b>"انتهى الاشتراك":</b> تواصل معنا عبر واتساب للتجديد.</li>
+<li><b>الحسم مرفوض:</b> يجب أن يكون الحسم أقل من إجمالي الفاتورة، وأن يكون المدفوع أقل من أو يساوي الصافي بعد الحسم.</li>
+<li><b>لا تظهر قائمة الوحدات بجانب البند:</b> المادة ليس لها وحدات إضافية. أضفها من صفحة المادة ← وحدات الكمية.</li>
+<li><b>لا يظهر 🎁 في الفاتورة:</b> تأكد أن العرض فعّال، وأنه يسري على هذا النوع من الفواتير (بيع أو شراء)، وأن الكمية وصلت لشرطه، وأنك لم تضغط «عدم اعتماد العرض» على هذا البند.</li>
+<li><b>لا يظهر قسم «العروض التجارية»:</b> يظهر لمن لديه صلاحية البيع أو الشراء أو المنتجات. تجده في المزيد تحت المنتجات.</li>
+<li><b>«انتهى الاشتراك»:</b> تواصل معنا عبر واتساب للتجديد.</li>
 <li><b>لا يظهر المنتج بالبحث:</b> تأكد أنه غير محذوف وأن الاسم أو الباركود صحيح.</li>
 <li><b>الكاميرا لا تفتح:</b> اسمح للموقع باستخدام الكاميرا من إعدادات المتصفح، وجرّب إضاءة أفضل وتقريب الباركود.</li>
 <li><b>ظهرت رسالة خطأ غريبة:</b> صوّرها وأرسلها لنا عبر واتساب.</li></ul>`}
 ];
+
+function guideFilter(){
+  const k=nAr(($('#gs')||{}).value||'').trim();let n=0;
+  document.querySelectorAll('#gl details').forEach(d=>{const hit=!k||nAr(d.textContent).includes(k);d.style.display=hit?'':'none';d.open=!!k&&hit;if(hit)n++});
+  const e=$('#gn');if(e)e.style.display=n?'none':''
+}
 function helpV(){
   const own=canAny(['purchase','products','stock','vouchers','reports','accounts','mfg','edit_invoices']);
-  $('#v').innerHTML=`<div class=card><b>دليل استخدام ${BRAND}</b><div class=m>اضغط على أي عنوان لفتحه.</div>
-  ${GUIDE.filter(g=>own||!g.o).map(g=>`<details><summary>${g.t}</summary>${g.h}</details>`).join('')}</div>
+  $('#v').innerHTML=`<div class=card><b>دليل استخدام ${BRAND}</b><div class=m>اضغط على أي عنوان لفتحه، أو ابحث عن ميزة.</div>
+  <input id=gs type=search placeholder="ابحث في الدليل (حسم، عروض، وحدات...)" oninput="guideFilter()" aria-label="بحث في الدليل" style="margin:8px 0">
+  <div id=gl>${GUIDE.filter(g=>own||!g.o).map(g=>`<details><summary>${g.t}</summary>${g.h}</details>`).join('')}</div><div id=gn class=m style="display:none">لا توجد نتائج مطابقة.</div></div>
   <div class=card><b>تثبيت التطبيق على جهازك</b><div class=row style="margin-top:8px"><button class="b ib" style="display:none" onclick="installApp()">📲 تثبيت التطبيق</button><button class="b s" onclick="checkInstall()">فحص التثبيت</button></div><div id=chk style="margin-top:8px"></div></div>
   <div class=card><b>تحتاج مساعدة؟</b><div class=m>فريق الدعم يردّ عبر واتساب.</div>
   <a class=b style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="${waLink()}" target=_blank rel=noopener>راسلنا على واتساب <span dir=ltr>${WAV}</span></a></div>`
@@ -1642,11 +1745,13 @@ async function histV(){
     S.hist=(data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,partners:{name:x.partner_name}}));
     return histList()
   }
-  const [s,p]=await Promise.all([
-    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),sale_items(product_id,qty,price,products(name))').order('created_at',{ascending:false}).limit(40),
-    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,products(name))').order('created_at',{ascending:false}).limit(40)]);
-  S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price}))})),
-    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost}))}))]
+  const hq=x=>Promise.all([
+    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),sale_items(product_id,qty,price,'+x+'products(name))').order('created_at',{ascending:false}).limit(40),
+    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,'+x+'products(name))').order('created_at',{ascending:false}).limit(40)]);
+  let [s,p]=await hq(S.noX?'':'note,unit_name,unit_qty,');
+  if((s.error||p.error)&&!S.noX){S.noX=true;[s,p]=await hq('')}
+  S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price,note:i.note,un:i.unit_name,uq:i.unit_qty}))})),
+    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost,note:i.note,un:i.unit_name,uq:i.unit_qty}))}))]
     .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
   histList()
 }
@@ -1657,14 +1762,16 @@ function showInv(k){
   const x=S.hist[k];
   $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</b>
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
-  ${x.items.map(i=>`<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(i.q)} × ${fmt(i.p)}${+i.p===0?' · مجاني 🎁':''}</span></span><b>${fmt(i.q*i.p)}</b></div>`).join('')}
+  ${x.items.map(i=>{const L=lineU(i);return `<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(L.q)} ${esc(L.u)} × ${fmt(L.p)}${+i.p===0?' · مجاني 🎁':''}</span>${i.note?`<br><span class=m>📝 ${esc(i.note)}</span>`:''}</span><b>${fmt(L.t)}</b></div>`}).join('')}
   ${+x.discount>0?`<div class=it><span>المجموع قبل الحسم</span><b>${fmt(+x.total+ +x.discount)}</b></div><div class=it><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><b class=neg>-${fmt(x.discount)}</b></div>`:''}<h3>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
   <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button><button class="b s" onclick="invPdf(${k})">📄 PDF / واتساب</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}${!x.voided_at&&S.role==='owner'?`<button class="b s" onclick="returnForm(${k})">${x.kind==='sale'?'مرتجع مبيع':'مرتجع شراء'}</button>`:''}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
   const x=S.hist[k],rt=+x.rate;
   S.mode=x.kind=='sale'?'sale':'buy';S.cur=x.currency;
-  S.cart=x.items.map(i=>({id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free:+i.p===0}));S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
+  S.cart=x.items.map(i=>{const us=S.units[i.id]||[],u=i.un&&+i.uq>0?us.find(v=>v.name===i.un):null,free=+i.p===0;
+    if(u&&!free){const f=+u.factor,uq=+i.uq;return {id:i.id,name:i.n,qty:uq,price:+(+i.q*+i.p/uq).toFixed(4),base:+i.p*rt,f,un:u.id,noOffer:true,locked:true,free:false,note:i.note||'',nt:!!i.note}}
+    return {id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free,note:i.note||'',nt:!!i.note}});S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
   S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
@@ -1679,7 +1786,7 @@ async function _once_voidInv(k){
 function printInv(k){printObj(S.hist[k])}
 function printObj(x){
   $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
-  <table>${x.items.map(i=>`<tr><td>${esc(i.n)}<td>${fmt(i.q)}×${fmt(i.p)}<td>${fmt(i.q*i.p)}`).join('')}</table><hr>
+  <table>${x.items.map(i=>{const L=lineU(i);return `<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
   ${+x.discount>0?`المجموع قبل الحسم: ${fmt(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${fmt(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</b><br>المدفوع: ${fmt(x.paid)}<br>المتبقي: ${fmt(x.total-x.paid)}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
