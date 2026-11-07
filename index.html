@@ -347,7 +347,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -393,7 +393,7 @@ plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
 gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[,٬\s]/g,'');
@@ -482,6 +482,7 @@ async function homeV(){
    <div class=card id=hcash></div>
    ${dbt?`<div class=card id=hdebt>${secH('debt','الديون','debt')}${skl(4)}</div>`:''}
    <div class=card id=hlow>${secH('prod','بضاعة قاربت على الانتهاء',can('purchase')?'buy':'prod',can('purchase')?'فاتورة شراء':'المنتجات')}${low.length?low.slice(0,6).map(p=>`<div class=it><span>${esc(p.name)}<br><span class=m>حد التنبيه ${fmt(p.min_stock)}</span></span><span class="pill ${+p.stock_qty<=0?'bad':'warn'}">${+p.stock_qty<=0?'نفد':'متبقي '+fmt(p.stock_qty)}</span></div>`).join('')+(low.length>6?`<div class=m style="margin-top:6px">و${low.length-6} منتجات أخرى</div>`:''):'<div class=empty>كل المنتجات فوق حد التنبيه</div>'}</div>
+   ${expCard()}
    ${rp||sl?`<div class=card id=hrec>${secH('hist','آخر الفواتير','hist')}${skl(4)}</div>`:''}
   </div>`;
   homeCash();
@@ -538,7 +539,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -649,6 +650,12 @@ async function load(){
   await refresh();flush();shell();rlLoad(true);
   if(S.role=='owner')autoBackup()
 }
+async function loadLots(){
+  if(S.noExp){S.lots=[];return}
+  const r=await db.from('product_lots').select('id,product_id,expiry_date,received_qty,qty_remaining,source').gt('qty_remaining',0).order('expiry_date').then(x=>x,()=>({error:1}));
+  if(r.error){S.lots=S.lots||[];return}
+  S.lots=(r.data||[]).map(x=>({...x,qty_remaining:+x.qty_remaining,received_qty:+x.received_qty}))
+}
 async function loadUO(){
   const [u,o]=await Promise.all([db.from('product_units').select('id,product_id,name,factor').order('factor'),db.from('product_offers').select('*').order('created_at')]).then(r=>r,()=>[{error:1},{error:1}]);
   if(u.error||o.error)return;
@@ -656,13 +663,14 @@ async function loadUO(){
   S.offers={};(o.data||[]).forEach(x=>(S.offers[x.product_id]=S.offers[x.product_id]||[]).push(x))
 }
 async function refresh(){
-  const [a,b,c]=await Promise.all([
-    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name'),
+  let [a,b,c]=await Promise.all([
+    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active'+(S.noExp?'':',track_expiry,expiry_alert_days')).eq('active',true).order('name'),
     db.from('partners').select('*').order('name'),
     db.from('shops').select('*').eq('id',S.shop.id).single()]);
+  if(a.error&&!S.noExp){S.noExp=true;a=await db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name')}
   if(a.error||b.error)return;
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
-  await loadUO();
+  await loadUO();await loadLots();
   const cr=await db.from('shop_currencies').select('*').eq('shop_id',S.shop.id).eq('is_active',true).order('code').then(r=>r,()=>({data:null,error:true}));
   S.currencies=cr.data||[{code:'SYP',name:'ليرة سورية',rate_to_syp:1,is_active:true},{code:'USD',name:'دولار أمريكي',rate_to_syp:+S.shop.usd_rate||1,is_active:true}];
   const usd=S.currencies.find(x=>x.code==='USD');if(usd)usd.rate_to_syp=+S.shop.usd_rate||usd.rate_to_syp;
@@ -691,7 +699,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -715,7 +723,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -883,9 +891,9 @@ function freeBase(i,ign){if((i.noOffer&&!ign)||i.free||i.locked||S.mode==='open'
     const k=Math.floor(qb/per+1e-9),f=+(k*(+o.free_qty)*unitF(i.id,o.free_unit_id)).toFixed(6);if(f>best)best=f});
   return best}
 function invLines(){const o=[];S.cart.forEach(i=>{const f=i.f||1,p=S.prods.find(x=>x.id==i.id)||{};o.push({id:i.id,n:i.name,q:+(i.qty*f).toFixed(6),p:i.price/f,un:unitNm(i),uq:i.qty,note:(i.note||'').trim()||null});const fr=freeBase(i);if(fr>0)o.push({id:i.id,n:i.name+' (مجاني)',q:fr,p:0,un:p.unit||'قطعة',uq:fr,note:null})});return o}
-function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt};
-  o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex});
-  const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx})}});return o}
+function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt},xe=(!sale&&isTrk(p)&&i.exp)?{expiry:i.exp}:{};
+  o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex,...xe});
+  const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx,...xe})}});return o}
 const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*100)/100;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
 function cn(k,v){const i=S.cart[k];if(i)i.note=String(v||'').slice(0,200)}
 function cnOpen(k){const i=S.cart[k];if(!i)return;i.nt=true;cartV();setTimeout(()=>{const e=$('#cn'+k);if(e)e.focus()},0)}
@@ -902,7 +910,7 @@ function cartV(){
   const el=$('#cart');if(!el)return;
   const sale=S.mode=='sale',n=S.cart.length;
   el.innerHTML=n?S.cart.map((i,k)=>{const have=lvl(i.id,S.wh),fr=freeBase(i),over=sale&&!S.edit&&(i.qty*(i.f||1)+fr)>have+1e-9,pr=S.prods.find(x=>x.id==i.id)||{},us=S.units[i.id]||[];
-   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span>${(i.note||i.nt)?`<input class=cnt id=cn${k} maxlength=200 placeholder="ملاحظة على البند" value="${esc(i.note||'')}" oninput="cn(${k},this.value)" aria-label="ملاحظة ${esc(i.name)}">`:`<button class=lnk style="align-self:flex-start" onclick="cnOpen(${k})">+ ملاحظة</button>`}</div>
+   return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span>${(i.note||i.nt)?`<input class=cnt id=cn${k} maxlength=200 placeholder="ملاحظة على البند" value="${esc(i.note||'')}" oninput="cn(${k},this.value)" aria-label="ملاحظة ${esc(i.name)}">`:`<button class=lnk style="align-self:flex-start" onclick="cnOpen(${k})">+ ملاحظة</button>`}${S.mode==='buy'&&isTrk(pr)?`<label class=m style="display:block">تاريخ الصلاحية <input type=date class=cnt style="width:auto;display:inline-block" value="${esc(i.exp||'')}" onchange="cx(${k},this.value)" aria-label="تاريخ الصلاحية ${esc(i.name)}"></label>`:''}${S.mode==='sale'&&isTrk(pr)?expHint(pr):''}</div>
    <div class=step><button onclick="cq(${k},1)" aria-label="زيادة الكمية">${ic('plus',16)}</button><input inputmode=decimal dir=ltr value="${i.qty}" onchange="cq(${k},0,this.value)" onfocus="this.select()" aria-label="كمية ${esc(i.name)}"><button onclick="cq(${k},-1)" aria-label="${i.qty<=1?'حذف البند':'إنقاص الكمية'}" class="${i.qty<=1?'rm':''}">${ic(i.qty<=1?'trash':'minus',16)}</button></div>
    <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*100)/100)}</b></div>`}).join('')
    :`<div class=empty>${ic('sale',30)}<div>اضغط على منتج أو امسح الباركود لإضافته</div></div>`;
@@ -922,6 +930,16 @@ async function _once_post(){
   let paid=pm=='cash'?t:pm=='credit'?0:+$('#paid').value;
   if(pm=='part'&&!(paid>0&&paid<t))return toast('أدخل مبلغاً أكبر من صفر وأقل من إجمالي الفاتورة ('+fmt(t)+')');
   if(pm!='cash'&&!$('#pt').value){$('#pt').style.borderColor='var(--r)';return toast(sale?'البيع الآجل يحتاج اختيار الزبون، أو أضفه بزر ＋':'الشراء الآجل يحتاج اختيار المورد، أو أضفه بزر ＋')}
+  if(!sale){
+    const miss=S.cart.find(i=>isTrk(S.prods.find(x=>x.id==i.id))&&!i.exp);
+    if(miss)return toast('أدخل تاريخ الصلاحية للمادة «'+miss.name+'»');
+    const old=S.cart.find(i=>i.exp&&i.exp<today());
+    if(old&&!await ok('تاريخ صلاحية منتهي',{msg:'المادة «'+old.name+'» تاريخ صلاحيتها '+old.exp+' وهو في الماضي. هل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return
+  }
+  if(sale&&!S.edit){
+    const exw=S.cart.map(i=>{const p=S.prods.find(x=>x.id==i.id);if(!isTrk(p))return null;const ls=(S.lots||[]).filter(l=>l.product_id==i.id&&l.qty_remaining>0);if(!ls.length)return null;const fresh=ls.filter(l=>dleft(l.expiry_date)>=0).reduce((a,l)=>a+l.qty_remaining,0),need=i.qty*(i.f||1)+freeBase(i);return need>fresh+1e-9?'«'+i.name+'»: الصالح '+fmt(fresh)+' '+(p.unit||'')+' فقط':null}).filter(Boolean);
+    if(exw.length&&!await ok('بضاعة منتهية الصلاحية',{msg:exw.join('\n')+'\n\nالباقي من دفعات منتهية الصلاحية. هل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return
+  }
   if(sale&&!S.edit){
     const chk=()=>{for(const i of S.cart){const have=lvl(i.id,S.wh),need=+(i.qty*(i.f||1)+freeBase(i)).toFixed(6);if(need>have+1e-9){const h=whHint(i.id);return '"'+i.name+'": المطلوب '+fmt(need)+' والمتوفر بهذا المستودع '+fmt(have)+(h?'. متوفر في: '+h+' (غيّر المستودع من القائمة)':'')}}return ''};
     let bad=chk();
@@ -1424,12 +1442,12 @@ async function _once_rcpSave(){
 
 /* ---- حالة الاتصال والعمل بدون إنترنت ---- */
 function saveCache(){
-  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,perms:S.perms,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,currencies:S.currencies,wh:S.wh,units:S.units,offers:S.offers,t:Date.now()})}catch(e){}
+  try{localStorage.cache=JSON.stringify({shop:S.shop,role:S.role,perms:S.perms,fixedWh:S.fixedWh,prods:S.prods,parts:S.parts,whs:S.whs,lv:S.lv,currencies:S.currencies,wh:S.wh,units:S.units,offers:S.offers,lots:S.lots,noExp:S.noExp,t:Date.now()})}catch(e){}
 }
 function useCacheOk(){
   let c=null;try{c=JSON.parse(localStorage.cache||'null')}catch(e){}
   if(!c||!c.shop)return false;
-  S.shop=c.shop;S.role=c.role;S.perms=c.perms||['sell'];S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.currencies=c.currencies||[];S.units=c.units||{};S.offers=c.offers||{};S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
+  S.shop=c.shop;S.role=c.role;S.perms=c.perms||['sell'];S.fixedWh=c.fixedWh;S.prods=c.prods||[];S.parts=c.parts||[];S.whs=c.whs||[];S.lv=c.lv||{};S.currencies=c.currencies||[];S.units=c.units||{};S.offers=c.offers||{};S.lots=c.lots||[];S.noExp=!!c.noExp;S.wh=c.wh;S.bom=[];S.accts=[];S.cached=true;
   shell();toast('تعمل الآن بدون اتصال على آخر بيانات محفوظة');return true
 }
 function pqUpdate(){
@@ -1511,6 +1529,7 @@ const GUIDE=[
 <li>بعد حفظ منتج جديد تُفتح <b>صفحة تعديله</b>، وفي أسفلها قسما <b>وحدات الكمية</b> و<b>العروض التجارية</b> الخاصان به.</li>
 <li>اضغط على أي منتج لتعديله أو حذفه. الحذف يخفيه من القوائم، والفواتير القديمة تبقى محفوظة.</li>
 <li>الكمية لا تُكتب يدوياً: تتغيّر تلقائياً بالشراء والبيع والجرد، وتُحفظ دائماً بالوحدة الأساسية.</li>
+<li><b>تاريخ الصلاحية:</b> فعّل «هذه المادة تتطلب تاريخ صلاحية» للأغذية والأدوية ونحوها، وحدّد أيام التنبيه. التفاصيل في قسم «تاريخ الصلاحية والتنبيهات».</li>
 <li><b>الكاشير</b> يرى المنتجات وأسعارها وكمياتها فقط، ما لم يملك صلاحية إدارة المنتجات.</li></ul>`},
 {t:'📏 وحدات الكمية (طرد، قطعة، كيلو...)',o:0,h:`<p class=m>تتيح لك البيع والشراء بوحدات مختلفة للمادة نفسها، مع بقاء المخزون محسوباً بوحدة واحدة هي الوحدة الأساسية.</p>
 <ol>
@@ -1567,6 +1586,7 @@ const GUIDE=[
 <li>إن سجّلت للمورد <b>أسعاراً خاصة</b> (من صفحته ← أسعار المورد) تظهر تكلفة المواد عنده تلقائياً عند اختياره.</li>
 <li><b>الحسم المكتسب:</b> اكتب ما حسمه لك المورد في حقل الحسم، فيُرحَّل إلى حساب الحسم المكتسب ويقلّل المبلغ المستحق للمورد.</li>
 <li><b>العروض:</b> إن كان للمادة عرض شراء (مثلاً بضاعة مجانية مع كل طرد) تُضاف الكمية المجانية لمخزونك بتكلفة صفر، فيخفض ذلك متوسط تكلفة المادة. يمكنك عدم اعتماده من زر «عدم اعتماد العرض».</li>
+<li>إن كانت المادة تتطلب <b>تاريخ صلاحية</b> يظهر لها حقل التاريخ تحت البند وهو إلزامي، ويُنشئ دفعة جديدة.</li>
 <li>سعر التكلفة هو الذي يحدد ربحك، فتأكد منه. التكلفة تُحسب بمتوسط مرجح عند تكرار الشراء.</li></ul>`},
 {t:'💳 الديون وكشف الحساب',o:1,h:`<ul>
 <li>تبويب <b>الديون</b> يعرض الزبائن (كم عليهم) والموردين (كم علينا) والأطراف التي هي زبون ومورد معاً (رصيدان).</li>
@@ -1606,6 +1626,19 @@ const GUIDE=[
 <li><b>مهم:</b> مسودة الجرد والمحاضر المحفوظة تبقى على الجهاز نفسه فقط ولا تدخل النسخ الاحتياطي. أكمل الجرد على جهاز واحد، واطبع المحضر أو نزّله PDF بعد التسوية.</li>
 <li>لا يوجد تراجع تلقائي بعد التطبيق، فإن أخطأت أجرِ تسوية جديدة للمادة. وإلغاء الجلسة قبل التطبيق لا يؤثر على المخزون.</li>
 <li>لدقة أكبر قلّل حركة البيع والشراء أثناء العدّ.</li></ul>`},
+{t:'⏳ تاريخ الصلاحية والتنبيهات',o:0,h:`<p class=m>للمواد التي تنتهي صلاحيتها (أغذية، أدوية، مواد تجميل...). تُتابَع بالدفعات: لكل شراء دفعة بتاريخها.</p>
+<ol>
+<li><b>التفعيل:</b> من <b>المنتجات</b> افتح المادة (أو أضفها) وفعّل <b>«هذه المادة تتطلب تاريخ صلاحية»</b>، وحدّد <b>أيام التنبيه</b> قبل الانتهاء (الافتراضي 30 يوماً).</li>
+<li><b>الشراء:</b> يظهر لهذه المادة في فاتورة الشراء حقل <b>تاريخ الصلاحية</b> وهو إلزامي. كل شراء ينشئ دفعة بتاريخها، وكذلك الكمية المجانية من العروض. وإن أدخلت تاريخاً في الماضي يسألك البرنامج للتأكيد.</li>
+<li><b>البيع:</b> يُستهلك <b>الأقرب انتهاءً أولاً</b> (والدفعات غير المنتهية قبل المنتهية). يظهر تحت البند «أقرب صلاحية»، ويحذّرك البرنامج قبل البيع إن كان المتوفر منتهي الصلاحية. لا يمنعك من المتابعة.</li>
+<li><b>التنبيهات:</b> بطاقة «صلاحية قاربت على الانتهاء» في الشاشة الرئيسية، وشاشة <b>صلاحية المنتجات</b> (المزيد ← المخزون والإنتاج) فيها الدفعات المنتهية والقريبة وكل الدفعات مع عدد الأيام وإمكانية <b>الطباعة</b>.</li>
+<li><b>الإتلاف:</b> زر <b>إتلاف / سحب</b> على الدفعة يخصم كميتها من المستودع المحدد حالياً ويسجّل خسارة الإتلاف بقيد جرد تلقائي. وزر <b>تعديل الكمية</b> يصحّح سجل الدفعة فقط دون تغيير المخزون.</li></ol>
+<ul>
+<li>إلغاء فاتورة بيع أو تعديلها يعيد الكميات إلى دفعاتها، وإلغاء فاتورة شراء يحذف دفعاتها.</li>
+<li><b>مطابقة الدفعات:</b> المرتجعات والجرد والمخزون الافتتاحي والتصنيع لا تتعامل مع الدفعات، فقد يختلف مخزون المادة عن مجموع دفعاتها. يظهر الفرق في آخر شاشة صلاحية المنتجات: أضف دفعة بتاريخها للكمية التي بلا تاريخ، أو خفّض الزائد تلقائياً.</li>
+<li><b>مادة لها مخزون قبل التفعيل:</b> بعد تفعيل الميزة تظهر كميتها «بلا تاريخ صلاحية» في المطابقة، فأضف لها دفعاتها من هناك.</li>
+<li>الدفعات على مستوى المادة وليست لكل مستودع، والتحويل بين المستودعات لا يغيّرها.</li>
+<li>تدخل الدفعات في النسخ الاحتياطي والاسترجاع.</li></ul>`},
 {t:'📊 التقارير',o:1,h:`<ul>
 <li>الملخص: الصندوق، ذمم الزبائن، قيمة المخزون، ذمم الموردين، المبيعات، وصافي الربح.</li>
 <li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ. المبيعات تُعرض بالإجمالي قبل الحسم، والحسم الممنوح ضمن المصاريف، والحسم المكتسب كسطر «إيرادات أخرى».</li>
@@ -1678,6 +1711,7 @@ const GUIDE=[
 <li><b>الحسم مرفوض:</b> يجب أن يكون الحسم أقل من إجمالي الفاتورة، وأن يكون المدفوع أقل من أو يساوي الصافي بعد الحسم.</li>
 <li><b>لا تظهر قائمة الوحدات بجانب البند:</b> المادة ليس لها وحدات إضافية. أضفها من صفحة المادة ← وحدات الكمية.</li>
 <li><b>لا يظهر 🎁 في الفاتورة:</b> تأكد أن العرض فعّال، وأنه يسري على هذا النوع من الفواتير (بيع أو شراء)، وأن الكمية وصلت لشرطه، وأنك لم تضغط «عدم اعتماد العرض» على هذا البند.</li>
+<li><b>لا يظهر حقل تاريخ الصلاحية في الشراء:</b> المادة لم تُفعَّل لها الميزة. فعّلها من تعديل المادة.</li>
 <li><b>لا يظهر قسم «العروض التجارية»:</b> يظهر لمن لديه صلاحية البيع أو الشراء أو المنتجات. تجده في المزيد تحت المنتجات.</li>
 <li><b>«انتهى الاشتراك»:</b> تواصل معنا عبر واتساب للتجديد.</li>
 <li><b>لا يظهر المنتج بالبحث:</b> تأكد أنه غير محذوف وأن الاسم أو الباركود صحيح.</li>
@@ -1760,13 +1794,14 @@ async function histV(){
     S.hist=(data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,partners:{name:x.partner_name}}));
     return histList()
   }
-  const hq=x=>Promise.all([
+  const hq=(x,e)=>Promise.all([
     db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),sale_items(product_id,qty,price,'+x+'products(name))').order('created_at',{ascending:false}).limit(40),
-    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,'+x+'products(name))').order('created_at',{ascending:false}).limit(40)]);
-  let [s,p]=await hq(S.noX?'':'note,unit_name,unit_qty,');
-  if((s.error||p.error)&&!S.noX){S.noX=true;[s,p]=await hq('')}
+    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,'+x+e+'products(name))').order('created_at',{ascending:false}).limit(40)]);
+  let [s,p]=await hq(S.noX?'':'note,unit_name,unit_qty,',(S.noX||S.noE||S.noExp)?'':'expiry_date,');
+  if((s.error||p.error)&&!S.noE&&!S.noX&&!S.noExp){S.noE=true;[s,p]=await hq('note,unit_name,unit_qty,','')}
+  if((s.error||p.error)&&!S.noX){S.noX=true;[s,p]=await hq('','')}
   S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price,note:i.note,un:i.unit_name,uq:i.unit_qty}))})),
-    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost,note:i.note,un:i.unit_name,uq:i.unit_qty}))}))]
+    ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost,note:i.note,un:i.unit_name,uq:i.unit_qty,exp:i.expiry_date}))}))]
     .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
   histList()
 }
@@ -1785,8 +1820,8 @@ function editInv(k){
   const x=S.hist[k],rt=+x.rate;
   S.mode=x.kind=='sale'?'sale':'buy';S.cur=x.currency;
   S.cart=x.items.map(i=>{const us=S.units[i.id]||[],u=i.un&&+i.uq>0?us.find(v=>v.name===i.un):null,free=+i.p===0;
-    if(u&&!free){const f=+u.factor,uq=+i.uq;return {id:i.id,name:i.n,qty:uq,price:+(+i.q*+i.p/uq).toFixed(4),base:+i.p*rt,f,un:u.id,noOffer:true,locked:true,free:false,note:i.note||'',nt:!!i.note}}
-    return {id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free,note:i.note||'',nt:!!i.note}});S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
+    if(u&&!free){const f=+u.factor,uq=+i.uq;return {id:i.id,name:i.n,qty:uq,price:+(+i.q*+i.p/uq).toFixed(4),base:+i.p*rt,f,un:u.id,noOffer:true,locked:true,free:false,note:i.note||'',nt:!!i.note,exp:i.exp||''}}
+    return {id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free,note:i.note||'',nt:!!i.note,exp:i.exp||''}});S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
   S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
@@ -1812,6 +1847,8 @@ function prodV(){
   const ow=can('products'),cs=can('costs');
   $('#v').innerHTML=`${ow?`<div class=card><b>مادة جديدة</b><input id=pn placeholder="اسم المادة"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
   <label class=fl>الوحدة الأساسية (المخزون يُحفظ بها)</label><input id=pu value="قطعة" placeholder="قطعة / كيلو / متر">
+  <label class=m style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type=checkbox id=pxe style="width:auto;margin:0" onchange="$('#pxd').style.display=this.checked?'':'none'"> هذه المادة تتطلب تاريخ صلاحية</label>
+  <div id=pxd style="display:none"><label class=fl>التنبيه قبل انتهاء الصلاحية بـ (يوم)</label><input id=pxn type=number inputmode=numeric value="30"></div>
   <label class=fl>عملة أسعار المادة</label><select id=pc>${curOptions('SYP')}</select>
   <div class=row><div><label class=fl>سعر المفرق</label><input id=pp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>سعر نصف الجملة</label><input id=psp type=number inputmode=decimal placeholder="0"></div></div>
   <div class=row><div><label class=fl>سعر الجملة</label><input id=pwp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=pm type=number inputmode=decimal placeholder="0"></div></div>
@@ -1825,7 +1862,8 @@ async function _once_addProd(){
   const n=$('#pn').value.trim();if(!n)return toast('الاسم مطلوب');
   if(S.prods.some(p=>p.name==n)&&!await ok('يوجد منتج بنفس الاسم',{msg:'هل تريد إضافة منتج آخر بنفس الاسم؟',icon:'alert',yes:'إضافة'}))return;
   if($('#pp').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#pp').value,semi=$('#psp').value.trim()===''?null:+$('#psp').value,whole=$('#pwp').value.trim()===''?null:+$('#pwp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
-  const {data:nd,error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,unit:$('#pu').value.trim()||'قطعة',sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0}).select('id').single();
+  const xp=expPayload('px');if(xp===null)return toast(EXPNEED);
+  const {data:nd,error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,unit:$('#pu').value.trim()||'قطعة',sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0,...xp}).select('id').single();
   if(error)return toast(dupMsg(error));
   await refresh();if(nd&&nd.id){editP(nd.id);toast('تم الحفظ ✓ يمكنك الآن إضافة وحدات وعروض للمادة')}else prodV()
 }
@@ -1833,6 +1871,8 @@ function editP(id){
   const p=S.prods.find(x=>x.id==id);
   $('#v').innerHTML=`<div class=card><b>تعديل المادة</b><input id=en value="${esc(p.name)}"><div class=row><input id=eb value="${esc(p.barcode||'')}" placeholder="الباركود"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('eb')">📷</button></div>
   <label class=fl>الوحدة الأساسية (المخزون يُحفظ بها)</label><input id=eun value="${esc(p.unit||'قطعة')}">
+  <label class=m style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type=checkbox id=exe style="width:auto;margin:0" ${p.track_expiry?'checked':''} onchange="$('#exd').style.display=this.checked?'':'none'"> هذه المادة تتطلب تاريخ صلاحية</label>
+  <div id=exd style="${p.track_expiry?'':'display:none'}"><label class=fl>التنبيه قبل انتهاء الصلاحية بـ (يوم)</label><input id=exn type=number inputmode=numeric value="${alDays(p)}"></div>
   <label class=fl>عملة أسعار المادة</label><select id=ec>${curOptions(p.sale_currency||'SYP')}</select>
   <div class=row><div><label class=fl>سعر المفرق</label><input id=ep type=number inputmode=decimal value="${tierPrice(p,'retail')}"></div><div><label class=fl>سعر نصف الجملة</label><input id=esp type=number inputmode=decimal value="${tierPrice(p,'semi_wholesale')}"></div></div>
   <div class=row><div><label class=fl>سعر الجملة</label><input id=ewp type=number inputmode=decimal value="${tierPrice(p,'wholesale')}"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=ei type=number inputmode=decimal value="${p.min_stock}" placeholder="حد التنبيه"></div></div>
@@ -1844,7 +1884,8 @@ async function saveP(...args){return runMutationOnce('saveP',()=>_once_saveP(...
 async function _once_saveP(id){
   const n=$('#en').value.trim();if(!n)return toast('الاسم مطلوب');
   if($('#ep').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#ep').value,semi=$('#esp').value.trim()===''?null:+$('#esp').value,whole=$('#ewp').value.trim()===''?null:+$('#ewp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
-  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,unit:$('#eun').value.trim()||'قطعة',min_stock:+$('#ei').value||0}).eq('id',id);
+  const xp=expPayload('ex');if(xp===null)return toast(EXPNEED);
+  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,unit:$('#eun').value.trim()||'قطعة',min_stock:+$('#ei').value||0,...xp}).eq('id',id);
   if(error)return toast(dupMsg(error));
   await refresh();prodV();toast('تم الحفظ ✓')
 }
@@ -1880,6 +1921,102 @@ function offList(){
   el.innerHTML=rows.map(p=>`<div style="padding:8px 0;border-top:1px solid var(--b)"><b ${ow?`style="cursor:pointer" onclick="go('prod');editP('${p.id}')" title="تعديل المادة"`:''}>${esc(p.name)}</b>
   ${(S.offers[p.id]||[]).filter(o=>!S.ofAct||o.active!==false).map(o=>`<div class=it style="${o.active===false?'opacity:.55':''}"><span>🎁 ${offTxt(p,o)}<br><span class=m>${AO[o.applies_to]||''}${o.active===false?' · موقوف':''}</span></span>${ow?`<span style="display:flex;gap:6px"><button class="b s" style="padding:4px 10px" onclick="togOffer('${o.id}','${p.id}')">${o.active===false?'تفعيل':'إيقاف'}</button><button class="b s neg" style="padding:4px 10px" onclick="delOffer('${o.id}','${p.id}')">حذف</button></span>`:''}</div>`).join('')}</div>`).join('')
   ||`<div class=m style="padding:8px 0">${Object.keys(S.offers).length?'لا توجد عروض مطابقة':'لا توجد عروض تجارية بعد'}</div>`
+}
+/* ---- تاريخ الصلاحية (دفعات) ---- */
+const dleft=iso=>Math.floor((new Date(iso+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);
+const isTrk=p=>!!(p&&p.track_expiry);
+const alDays=p=>{const n=p&&p.expiry_alert_days;return n!=null&&+n>=0?+n:30};
+function expAll(){return (S.lots||[]).map(l=>{const p=S.prods.find(x=>x.id==l.product_id);return p&&isTrk(p)?{...l,p,d:dleft(l.expiry_date)}:null}).filter(Boolean).sort((a,b)=>a.d-b.d||a.p.name.localeCompare(b.p.name,'ar'))}
+const expLots=()=>expAll().filter(x=>x.d<=alDays(x.p));
+function expMismatch(){const sum={};(S.lots||[]).forEach(l=>sum[l.product_id]=(sum[l.product_id]||0)+l.qty_remaining);
+  return S.prods.filter(isTrk).map(p=>{const st=+p.stock_qty||0,lt=+(sum[p.id]||0).toFixed(6);return {p,st,lt,diff:+(st-lt).toFixed(6)}}).filter(x=>Math.abs(x.diff)>1e-6)}
+function expHint(p){
+  const ls=(S.lots||[]).filter(l=>l.product_id==p.id&&l.qty_remaining>0).sort((a,b)=>a.expiry_date<b.expiry_date?-1:1);
+  if(!ls.length)return '';
+  const f=ls.find(l=>dleft(l.expiry_date)>=0);
+  if(!f)return '<span class=neg>⚠ كل الدفعات المتوفرة منتهية الصلاحية</span>';
+  const d=dleft(f.expiry_date);
+  return `<span class=m${d<=alDays(p)?' style="color:#b45309;font-weight:600"':''}>⏳ أقرب صلاحية ${f.expiry_date}${d<=alDays(p)?' (بعد '+d+' يوم)':''}</span>`
+}
+function cx(k,v){const i=S.cart[k];if(i)i.exp=v||''}
+const expTxt=x=>x.d<0?'منتهية منذ '+(-x.d)+' يوم':x.d==0?'تنتهي اليوم':'بعد '+x.d+' يوم';
+function expCard(){
+  if(S.noExp||!S.prods.some(isTrk))return '';
+  const L=expLots();
+  return `<div class=card id=hexp>${secH('cal','صلاحية قاربت على الانتهاء','expiry','عرض الكل')}${L.length?L.slice(0,6).map(x=>`<div class=it><span>${esc(x.p.name)}<br><span class=m>${x.expiry_date} · ${fmt(x.qty_remaining)} ${esc(x.p.unit||'')}</span></span><span class="pill ${x.d<0?'bad':'warn'}">${expTxt(x)}</span></div>`).join('')+(L.length>6?`<div class=m style="margin-top:6px">و${L.length-6} دفعات أخرى</div>`:''):'<div class=empty>لا توجد دفعات قاربت صلاحيتها</div>'}</div>`
+}
+function expPayload(pre){
+  const on=$('#'+pre+'e')&&$('#'+pre+'e').checked;
+  if(S.noExp)return on?null:{};
+  return {track_expiry:!!on,expiry_alert_days:Math.max(0,Math.floor(+toEn(($('#'+pre+'n')||{}).value)||30))}
+}
+const EXPNEED='لتفعيل تاريخ الصلاحية نفّذ ملف التحديث migration4_expiry_dates.sql في قاعدة البيانات أولاً';
+function expiryV(){
+  if(S.noExp)return $('#v').innerHTML=`<div class=card><b>⏳ صلاحية المنتجات</b><div class=m>الميزة غير مفعّلة بعد في قاعدة البيانات. نفّذ ملف migration4_expiry_dates.sql ثم أعد تحميل الصفحة.</div></div>`;
+  const f=S.expF||'soon',all=expAll(),nb=all.filter(x=>x.d<0).length,ns=all.filter(x=>x.d>=0&&x.d<=alDays(x.p)).length;
+  $('#v').innerHTML=`<div class=card><b>⏳ صلاحية المنتجات</b>
+  <div class=m>للمواد التي تتطلب تاريخ صلاحية تُسجَّل دفعة بتاريخها عند كل شراء، ويستهلك البيع الأقرب انتهاءً أولاً. فعّل الميزة لمادة من «تعديل المادة».</div>
+  <div class=it><span>دفعات منتهية</span><b class="${nb?'neg':''}">${nb}</b></div>
+  <div class=it><span>تنتهي قريباً (حسب تنبيه كل مادة)</span><b>${ns}</b></div>
+  <div class=row style="margin-top:8px"><select id=exf onchange="S.expF=this.value;expList()"><option value=soon>المنتهية والقريبة</option><option value=exp>المنتهية فقط</option><option value=all>كل الدفعات</option></select><button class="b s" style="flex:0 0 auto" onclick="expPrint()">🖨 طباعة</button></div>
+  <div id=exl></div></div><div id=exm></div>`;
+  $('#exf').value=f;expList();expMis()
+}
+function expFiltered(){const f=S.expF||'soon',a=expAll();return f==='exp'?a.filter(x=>x.d<0):f==='soon'?a.filter(x=>x.d<=alDays(x.p)):a}
+function expList(){
+  const el=$('#exl');if(!el)return;const L=expFiltered(),ow=can('stock');
+  el.innerHTML=L.map(x=>`<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.p.name)}</b><span class="pill ${x.d<0?'bad':x.d<=alDays(x.p)?'warn':''}">${expTxt(x)}</span></div>
+  <div class=m>تاريخ الانتهاء ${x.expiry_date} · المتبقي ${fmt(x.qty_remaining)} ${esc(x.p.unit||'')}${x.source==='manual'?' · دفعة يدوية':''}</div>
+  ${ow?`<div class=row style="margin-top:6px"><button class="b s neg" style="padding:6px 12px" onclick="lotDispose('${x.id}')">إتلاف / سحب</button><button class="b s" style="padding:6px 12px" onclick="lotSet('${x.id}')">تعديل الكمية</button></div>`:''}</div>`).join('')||'<div class=m style="padding:8px 0">لا توجد دفعات في هذا العرض</div>'
+}
+function expMis(){
+  const el=$('#exm');if(!el)return;const M=expMismatch(),ow=can('stock');
+  el.innerHTML=M.length?`<div class=card><b>مطابقة الدفعات</b><div class=m>فرق بين مخزون المادة ومجموع دفعاتها بسبب عمليات لا تعرف الدفعات (مرتجع، جرد، مخزون افتتاحي، تصنيع). صحّحه من هنا.</div>${M.map(x=>x.diff>0?`<div class=it style="display:block"><b>${esc(x.p.name)}</b><div class=m>كمية بلا تاريخ صلاحية: ${fmt(x.diff)} ${esc(x.p.unit||'')} (المخزون ${fmt(x.st)} · الدفعات ${fmt(x.lt)})</div>${ow?`<div class=row style="margin-top:6px"><input type=date id=ld_${x.p.id}><input type=number inputmode=decimal id=lq_${x.p.id} value="${x.diff}" style="max-width:110px" aria-label="الكمية"><button class="b s" style="flex:0 0 auto" onclick="lotAddFor('${x.p.id}')">إضافة دفعة</button></div>`:''}</div>`:`<div class=it style="display:block"><b>${esc(x.p.name)}</b><div class=m>الدفعات تزيد عن المخزون بـ ${fmt(-x.diff)} ${esc(x.p.unit||'')}</div>${ow?`<button class="b s" style="margin-top:6px" onclick="lotTrim('${x.p.id}')">تخفيض الدفعات تلقائياً (الأقرب انتهاءً أولاً)</button>`:''}</div>`).join('')}</div>`:''
+}
+async function lotAddFor(...a){return runMutationOnce('lotAdd',()=>_once_lotAddFor(...a))}
+async function _once_lotAddFor(pid){
+  const d=$('#ld_'+pid).value,q=+toEn($('#lq_'+pid).value);
+  if(!d)return toast('اختر تاريخ الصلاحية');
+  if(!(q>0))return toast('أدخل كمية صحيحة');
+  if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
+  const r=await call('lot_add',{p_shop:S.shop.id,p_client:uid(),p_product:pid,p_expiry:d,p_qty:q});
+  if(r!==undefined){await refresh();toast('تمت إضافة الدفعة ✓');expiryV()}
+}
+async function lotTrim(...a){return runMutationOnce('lotTrim',()=>_once_lotTrim(...a))}
+async function _once_lotTrim(pid){
+  if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
+  const r=await call('lot_trim',{p_shop:S.shop.id,p_product:pid});
+  if(r!==undefined){await refresh();toast('تمت المطابقة ✓');expiryV()}
+}
+async function lotSet(...a){return runMutationOnce('lotSet',()=>_once_lotSet(...a))}
+async function _once_lotSet(id){
+  const l=(S.lots||[]).find(x=>x.id==id);if(!l)return;
+  const p=S.prods.find(x=>x.id==l.product_id)||{};
+  const v=await ask('كمية الدفعة: '+p.name,l.qty_remaining,{msg:'الكمية الفعلية المتبقية من هذه الدفعة ('+l.expiry_date+'). هذا يعدّل سجل الدفعة فقط ولا يغيّر مخزون المادة.',num:true,icon:'stock',yes:'حفظ'});
+  if(v===null||v===''||isNaN(+v)||+v<0)return;
+  if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
+  const r=await call('lot_adjust',{p_shop:S.shop.id,p_lot:id,p_new_qty:+v});
+  if(r!==undefined){await refresh();toast('تم التعديل ✓');expiryV()}
+}
+async function lotDispose(...a){return runMutationOnce('lotDispose',()=>_once_lotDispose(...a))}
+async function _once_lotDispose(id){
+  const l=(S.lots||[]).find(x=>x.id==id);if(!l)return;
+  const p=S.prods.find(x=>x.id==l.product_id)||{},wh=S.wh,w=S.whs.find(x=>x.id==wh)||{},have=lvl(p.id,wh),q=Math.min(l.qty_remaining,have);
+  if(!(q>0))return toast('رصيد «'+p.name+'» في المستودع «'+(w.name||'')+'» صفر. اختر من تبويب المخزون المستودع الذي توجد فيه البضاعة');
+  if(!await ok('إتلاف / سحب من المخزون؟',{msg:'سيُخصم '+fmt(q)+' '+(p.unit||'')+' من «'+p.name+'» في المستودع «'+(w.name||'')+'» (دفعة '+l.expiry_date+')، وتُسجَّل خسارة الإتلاف بقيد جرد تلقائي.'+(q<l.qty_remaining?'\nرصيد المستودع أقل من كمية الدفعة، فيُخصم المتاح فقط.':''),danger:true,yes:'إتلاف',no:'رجوع'}))return;
+  if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
+  const r=await call('lot_dispose',{p_wh:wh,p_shop:S.shop.id,p_client:uid(),p_lot:id,p_qty:q,p_new_wh_qty:+(have-q).toFixed(6),p_reason:'إتلاف بضاعة منتهية الصلاحية'});
+  if(r!==undefined){await refresh();toast('تم الإتلاف وتسجيل الخسارة ✓');expiryV()}
+}
+function expPrint(){
+  const L=expFiltered(),tt={soon:'المنتهية والقريبة الانتهاء',exp:'الدفعات المنتهية',all:'كل الدفعات'}[S.expF||'soon'];
+  const th='style="border:1px solid #444;padding:3px 5px;text-align:start;background:#eee"',td='style="border:1px solid #444;padding:3px 5px"';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;font-size:15px;margin:4px 0">تقرير صلاحية المنتجات</div><div style="text-align:center;font-size:11px">${tt} · ${today()}</div><hr>
+  <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th ${th}>#<th ${th}>المادة<th ${th}>الوحدة<th ${th}>الكمية<th ${th}>تاريخ الانتهاء<th ${th}>الحالة</tr></thead><tbody>${L.map((x,i)=>`<tr><td ${td}>${i+1}<td ${td}>${esc(x.p.name)}<td ${td}>${esc(x.p.unit||'')}<td ${td}>${fmt(x.qty_remaining)}<td ${td}>${x.expiry_date}<td ${td}>${expTxt(x)}</tr>`).join('')}</tbody></table>`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  $('#rcpt').classList.add('wide');
+  addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
+  print()
 }
 /* ---- الجرد السنوي للمخازن ---- */
 const stkKey=w=>'stk_'+S.shop.id+'_'+w,stkArcKey=()=>'stkarc_'+S.shop.id;
