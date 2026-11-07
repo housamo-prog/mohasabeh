@@ -110,7 +110,7 @@ details ol,details ul{margin:8px 0;padding-inline-start:22px;line-height:1.9}
 #scan{position:fixed;inset:0;background:#000;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px}
 #reader{width:100%;max-width:480px}#scan .m{color:#fff;text-align:center}
 #rcpt{display:none}
-@media print{body>*:not(#rcpt){display:none!important}#rcpt{display:block;width:72mm;font:12px system-ui,Tahoma,sans-serif;color:#000}}
+@media print{body>*:not(#rcpt){display:none!important}#rcpt{display:block;width:72mm;font:12px system-ui,Tahoma,sans-serif;color:#000}#rcpt.wide{width:100%!important}}
 #toast{position:fixed;bottom:calc(var(--bnh) + 14px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 24px);background:#1f2937;color:#fff;padding:11px 16px;border-radius:12px;display:none;z-index:60;box-shadow:var(--sh2);font-weight:500;animation:tin .22s ease-out}
 @media(min-width:960px){#toast{bottom:22px}}
 @keyframes tin{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
@@ -347,7 +347,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -393,7 +393,7 @@ plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
 gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[,٬\s]/g,'');
@@ -538,7 +538,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -691,7 +691,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -715,7 +715,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -965,6 +965,7 @@ function stockV(){
   <div class=card><b>تهيئة محل قائم</b><div class=m>إذا كان عندك بضاعة موجودة من قبل، سجّلها كرصيد افتتاحي (لا يؤثر على الصندوق) في المستودع المحدد.</div>
   <button class=b style="width:100%;margin-top:6px" onclick="go('open')">تسجيل مخزون افتتاحي</button></div>
   <div class=card><b>جرد وتسوية الكميات</b><div class=m>اضغط على المنتج وأدخل الكمية الفعلية الموجودة في المستودع المحدد</div>
+  <button class="b s" style="width:100%;margin:6px 0" onclick="go('stocktake')">📋 الجرد السنوي (جلسة جرد كاملة مع التقرير والطباعة)</button>
   <input id=sq placeholder="بحث" oninput="stockList()"><div id=sl></div></div>`;
   stockList()
 }
@@ -1588,9 +1589,23 @@ const GUIDE=[
 <li>إن انقطع الاتصال أثناء الحفظ ولم تُعرف النتيجة، افتح قائمة المرتجعات وأعد إرسال الطلب نفسه ولا تنشئ بديلاً عنه.</li></ul>`},
 {t:'🏬 المخزون والمستودعات',o:1,h:`<ul>
 <li>من تبويب <b>المخزون</b>: اختر المستودع الحالي، أضف مستودعاً جديداً، أو حوّل بضاعة بين مستودعين.</li>
-<li><b>الجرد:</b> اضغط على المنتج وأدخل الكمية الفعلية الموجودة (بالوحدة الأساسية)، فيسوّي البرنامج الفرق ويسجّله كخسارة أو ربح جرد.</li>
+<li><b>الجرد السريع لمادة واحدة:</b> اضغط على المنتج وأدخل الكمية الفعلية الموجودة (بالوحدة الأساسية)، فيسوّي البرنامج الفرق ويسجّله كخسارة أو ربح جرد. وللجرد الكامل للمستودع استخدم <b>الجرد السنوي</b> (القسم التالي).</li>
 <li><b>مخزون افتتاحي:</b> لتسجيل بضاعة موجودة مسبقاً بدون التأثير على الصندوق. استخدمه مرة واحدة لكل منتج.</li>
 <li>الفواتير تُسجَّل على المستودع المختار. إذا بِعتَ من مستودع رصيده أقل يظهر رصيده بالسالب تنبيهاً: صحّحه بالتحويل أو اختر المستودع الصحيح.</li></ul>`},
+{t:'📋 الجرد السنوي للمخازن',o:1,h:`<p class=m>جلسة جرد كاملة لمستودع واحد، مع مراجعة الفروقات وتسويتها وطباعة المحضر. تجدها في <b>المزيد ← الجرد السنوي</b> أو من زر الجرد في تبويب المخزون.</p>
+<ol>
+<li><b>البدء:</b> اختر المستودع واضغط <b>بدء جرد</b> واكتب اسماً (مثل: جرد سنوي 2026). يثبّت البرنامج أرصدة النظام الحالية كنقطة بداية.</li>
+<li><b>ورقة العدّ:</b> اطبعها أو احفظها PDF لتعدّ عليها بالمستودع. اترك خيار <b>الجرد الأعمى</b> مفعّلاً لتُخفى كميات النظام عن العادّين فيعدّون بحياد.</li>
+<li><b>إدخال الكميات:</b> اكتب الكمية الفعلية لكل مادة، أو اضغط <b>مطابق</b> إن طابقت النظام، أو امسح الباركود 📷 (كل مسحة تضيف 1). للمواد ذات الوحدات اختر وحدة العدّ (طرد، كرتونة...). يظهر شريط تقدّم، وفلتر لإظهار «لم يُجرد» أو «فيه فرق»، وبحث بالاسم أو الباركود.</li>
+<li><b>المراجعة:</b> اضغط <b>مراجعة وتسوية</b> لترى عدد المواد المجرودة وغير المجرودة والفروقات، وقيمة الزيادة والعجز وصافي الفرق (لمن يملك صلاحية رؤية التكلفة). تستطيع طباعة تقرير ما قبل التسوية.</li>
+<li><b>المواد غير المجرودة:</b> تُترك كمياتها كما هي افتراضياً. وإن فعّلت خيار «اعتبارها صفراً» تُسجَّل عجزاً كاملاً.</li>
+<li><b>التطبيق:</b> اضغط <b>تطبيق التسوية</b> (يحتاج إنترنت). تُعدَّل الكميات وتُسجَّل قيود العجز والزيادة تلقائياً. ما بيع أو اشتُري بعد بدء الجرد يُراعى تلقائياً. وإن انقطع الاتصال في المنتصف أعد الضغط فيكمل الباقي دون تكرار ما طُبّق.</li>
+<li><b>المحضر:</b> بعد التسوية يظهر محضر الجرد للطباعة أو PDF، وفيه توقيعات أمين المستودع والمحاسب والمدير، ويُحفظ في «محاضر الجرد السابقة» (آخر 10 محاضر).</li></ol>
+<ul>
+<li>جلسة الجرد تخص مستودعاً واحداً. كرّر الخطوات لباقي المستودعات.</li>
+<li><b>مهم:</b> مسودة الجرد والمحاضر المحفوظة تبقى على الجهاز نفسه فقط ولا تدخل النسخ الاحتياطي. أكمل الجرد على جهاز واحد، واطبع المحضر أو نزّله PDF بعد التسوية.</li>
+<li>لا يوجد تراجع تلقائي بعد التطبيق، فإن أخطأت أجرِ تسوية جديدة للمادة. وإلغاء الجلسة قبل التطبيق لا يؤثر على المخزون.</li>
+<li>لدقة أكبر قلّل حركة البيع والشراء أثناء العدّ.</li></ul>`},
 {t:'📊 التقارير',o:1,h:`<ul>
 <li>الملخص: الصندوق، ذمم الزبائن، قيمة المخزون، ذمم الموردين، المبيعات، وصافي الربح.</li>
 <li><b>تقرير الفترة:</b> اليوم، 7 أيام، 30 يوماً، أو من تاريخ إلى تاريخ. المبيعات تُعرض بالإجمالي قبل الحسم، والحسم الممنوح ضمن المصاريف، والحسم المكتسب كسطر «إيرادات أخرى».</li>
@@ -1866,6 +1881,206 @@ function offList(){
   ${(S.offers[p.id]||[]).filter(o=>!S.ofAct||o.active!==false).map(o=>`<div class=it style="${o.active===false?'opacity:.55':''}"><span>🎁 ${offTxt(p,o)}<br><span class=m>${AO[o.applies_to]||''}${o.active===false?' · موقوف':''}</span></span>${ow?`<span style="display:flex;gap:6px"><button class="b s" style="padding:4px 10px" onclick="togOffer('${o.id}','${p.id}')">${o.active===false?'تفعيل':'إيقاف'}</button><button class="b s neg" style="padding:4px 10px" onclick="delOffer('${o.id}','${p.id}')">حذف</button></span>`:''}</div>`).join('')}</div>`).join('')
   ||`<div class=m style="padding:8px 0">${Object.keys(S.offers).length?'لا توجد عروض مطابقة':'لا توجد عروض تجارية بعد'}</div>`
 }
+/* ---- الجرد السنوي للمخازن ---- */
+const stkKey=w=>'stk_'+S.shop.id+'_'+w,stkArcKey=()=>'stkarc_'+S.shop.id;
+const stkRead=w=>{try{return JSON.parse(localStorage.getItem(stkKey(w))||'null')}catch(e){return null}};
+function stkSave(){try{localStorage.setItem(stkKey(S.stkWh),JSON.stringify(S.stk))}catch(e){toast('تعذّر حفظ مسودة الجرد على هذا الجهاز')}}
+const stkArc=()=>{try{return JSON.parse(localStorage.getItem(stkArcKey())||'[]')}catch(e){return[]}};
+const stkD=iso=>iso?ld(new Date(iso)):'';
+const stkBase=(pid,c)=>{c=c||S.stk.cnt[pid];return c?+(c.q*unitF(pid,c.u)).toFixed(6):null};
+function stkLines(){
+  S.prods.forEach(p=>{if(S.stk.snap[p.id]===undefined)S.stk.snap[p.id]=lvl(p.id,S.stkWh)});
+  const cs=can('costs');
+  return S.prods.map(p=>{const snap=+S.stk.snap[p.id]||0,c=stkBase(p.id),eff=c!==null?c:(S.stk.zero?0:null),live=lvl(p.id,S.stkWh),diff=eff===null?0:+(eff-snap).toFixed(6);
+    return {p,snap,c,eff,live,diff,mv:+(live-snap).toFixed(6),val:cs?diff*(+p.avg_cost||0):null}})
+}
+function stocktakeV(){
+  if(S.stkWh&&S.whs.some(w=>w.id==S.stkWh)){S.stk=stkRead(S.stkWh);if(S.stk)return S.stkView==='review'?stkReview():stkCount()}
+  S.stkWh=null;S.stk=null;stkHome()
+}
+function stkHome(){
+  const arc=stkArc();
+  $('#v').innerHTML=`<div class=card><b>📋 الجرد السنوي للمخازن</b>
+  <div class=m>طريقة العمل: 1) تبدأ جلسة جرد لمستودع فتُثبَّت أرصدة النظام الحالية. 2) تدخل الكمية الفعلية لكل مادة (يدوياً أو بمسح الباركود). 3) تراجع الفروقات والمواد غير المجرودة. 4) تطبّق التسوية فيُعدَّل المخزون وتُسجَّل قيود العجز والزيادة. 5) تطبع المحضر أو تحفظه PDF.</div>
+  <div class=m>المسودة والأرشيف يُحفظان على هذا الجهاز. أكمل الجرد على الجهاز نفسه.</div></div>
+  <div class=card><b>المستودعات</b>${S.whs.map(w=>{const d=stkRead(w.id),n=d?Object.keys(d.cnt||{}).length:0;
+    return `<div class=it><span>${esc(w.name)}<br><span class=m>${d?'جرد جارٍ: '+esc(d.label)+' ('+n+' مادة مجرودة)':'لا يوجد جرد جارٍ'}</span></span><button class="b s" style="padding:6px 12px" onclick="stkOpen('${w.id}')">${d?'متابعة':'بدء جرد'}</button></div>`}).join('')||'<div class=m>لا توجد مستودعات</div>'}</div>
+  <div class=card><b>محاضر الجرد السابقة</b>${arc.map(r=>`<div class=it><span>${esc(r.label)}<br><span class=m>${esc(r.wh)} · ${stkD(r.applied)}</span></span><span style="display:flex;gap:6px"><button class="b s" style="padding:4px 10px" onclick="stkArcView('${r.id}')">عرض</button><button class="b s neg" style="padding:4px 10px" onclick="stkArcDel('${r.id}')">حذف</button></span></div>`).join('')||'<div class=m>لا توجد محاضر بعد. يظهر المحضر هنا بعد تطبيق التسوية.</div>'}</div>`
+}
+async function stkOpen(wid){
+  let d=stkRead(wid);
+  if(!d){
+    const l=await ask('اسم الجرد','جرد سنوي '+new Date().getFullYear(),{msg:'سيُثبَّت رصيد النظام الحالي لهذا المستودع كنقطة بداية للجرد.',icon:'stock',yes:'بدء'});
+    if(!l||!String(l).trim())return;
+    if(navigator.onLine)await refresh();
+    const snap={};S.prods.forEach(p=>snap[p.id]=lvl(p.id,wid));
+    d={label:String(l).trim(),wh:wid,started:new Date().toISOString(),snap,cnt:{},zero:false,applied:{},done:{}};
+    try{localStorage.setItem(stkKey(wid),JSON.stringify(d))}catch(e){return toast('تعذّر حفظ مسودة الجرد على هذا الجهاز (المساحة ممتلئة)')}
+  }
+  S.stkWh=wid;S.stkView='count';S.stkFilter='all';S.stkQ='';stocktakeV()
+}
+function stkCount(){
+  const d=S.stk,w=S.whs.find(x=>x.id==S.stkWh)||{};
+  $('#v').innerHTML=`<div class=card><b>${esc(d.label)}</b> <span class=m>· ${esc(w.name||'')}</span>
+  <div class=m>بدأ: ${stkD(d.started)} · تُحفظ المسودة تلقائياً على هذا الجهاز</div>
+  <div id=skp style="margin:8px 0"></div>
+  <div class=row><button class=b onclick="S.stkView='review';stocktakeV()">مراجعة وتسوية</button><button class="b s" onclick="stkScan()">📷 مسح باركود</button></div>
+  <label class=m style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type=checkbox id=skb style="width:auto;margin:0" checked> إخفاء كميات النظام في ورقة العدّ (جرد أعمى)</label>
+  <div class=row><button class="b s" onclick="stkPrint(stkSheetData())">🖨 ورقة العدّ</button><button class="b s" onclick="stkPdf(stkSheetData())">📄 PDF</button></div>
+  <button class="b s neg" style="width:100%;margin-top:8px" onclick="stkCancel()">إلغاء هذا الجرد</button>
+  <button class="b s" style="width:100%;margin-top:6px" onclick="S.stkWh=null;stocktakeV()">رجوع</button></div>
+  <div class=card><div class=row><input id=skq type=search placeholder="ابحث بالاسم أو الباركود" value="${esc(S.stkQ||'')}" oninput="S.stkQ=this.value;stkList()"><select id=skf onchange="S.stkFilter=this.value;stkList()" style="flex:0 0 auto;width:auto"><option value=all>الكل</option><option value=todo>لم يُجرد</option><option value=diff>فيه فرق</option></select></div><div id=skl></div></div>`;
+  $('#skf').value=S.stkFilter||'all';stkProg();stkList()
+}
+function stkProg(){
+  const e=$('#skp');if(!e||!S.stk)return;
+  const n=S.prods.length,k=S.prods.filter(p=>S.stk.cnt[p.id]).length,pc=n?Math.round(k*100/n):0;
+  e.innerHTML=`<div class=m>تم جرد ${k} من ${n} مادة (${pc}%)</div><div style="height:8px;background:var(--b);border-radius:6px;margin-top:4px"><div style="width:${pc}%;height:8px;background:var(--p);border-radius:6px"></div></div>`
+}
+function stkList(){
+  const el=$('#skl');if(!el)return;
+  const q=nAr(S.stkQ||''),f=S.stkFilter||'all';
+  let ls=stkLines().filter(l=>(!q||nAr(l.p.name).includes(q)||String(l.p.barcode||'').includes(q))&&(f==='all'||(f==='todo'&&l.c===null)||(f==='diff'&&l.c!==null&&l.diff!==0)));
+  const n=ls.length;ls=ls.slice(0,120);
+  el.innerHTML=ls.map(stkRow).join('')+(n>120?`<div class=m>يُعرض أول 120 من ${n}. استخدم البحث لإظهار الباقي.</div>`:'')||'<div class=m>لا نتائج</div>'
+}
+function stkDiffTxt(l){if(l.c===null)return 'لم يُجرد بعد';return l.diff===0?'<span class=ok>مطابق ✓</span>':`<span class=neg>${l.diff>0?'زيادة':'عجز'} ${fmt(Math.abs(l.diff))} ${esc(l.p.unit||'')}</span>`}
+function stkRow(l){
+  const p=l.p,us=S.units[p.id]||[],c=S.stk.cnt[p.id];
+  return `<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.name)}</b><span class=m>النظام: ${fmt(l.snap)} ${esc(p.unit||'')}</span></div>
+  <div class=row style="margin-top:6px;align-items:center"><input id=sv_${p.id} inputmode=decimal dir=ltr placeholder="الكمية الفعلية" value="${c?c.q:''}" onchange="stkSet('${p.id}',this.value)" onfocus="this.select()" aria-label="الكمية الفعلية ${esc(p.name)}">
+  ${us.length?`<select id=su_${p.id} onchange="stkUnit('${p.id}',this.value)" style="flex:0 0 auto;width:auto"><option value="">${esc(p.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${c&&c.u==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:`<span class=m>${esc(p.unit||'')}</span>`}
+  <button class="b s" style="flex:0 0 auto;padding:8px 12px" onclick="stkMatch('${p.id}')">مطابق</button></div>
+  <div class=m id=sd_${p.id}>${stkDiffTxt(l)}</div></div>`
+}
+function stkRowUpd(pid){
+  const l=stkLines().find(x=>x.p.id==pid);if(!l)return;
+  const c=S.stk.cnt[pid],i=$('#sv_'+pid);if(i)i.value=c?c.q:'';
+  const u=$('#su_'+pid);if(u)u.value=c&&c.u?c.u:'';
+  const d=$('#sd_'+pid);if(d)d.innerHTML=stkDiffTxt(l);stkProg()
+}
+function stkSet(pid,v){
+  const s=String(v||'').trim(),c=S.stk.cnt;
+  if(s==='')delete c[pid];
+  else{const n=+toEn(s);if(!(n>=0)){toast('أدخل كمية صحيحة (صفر أو أكبر)');return stkRowUpd(pid)}c[pid]={q:n,u:c[pid]?c[pid].u:null}}
+  stkSave();stkRowUpd(pid)
+}
+function stkUnit(pid,u){const c=S.stk.cnt[pid];if(!c){const e=$('#su_'+pid);if(e)e.value='';return toast('أدخل الكمية أولاً')}c.u=u||null;stkSave();stkRowUpd(pid)}
+function stkMatch(pid){S.stk.cnt[pid]={q:+S.stk.snap[pid]||0,u:null};stkSave();stkRowUpd(pid)}
+function stkScan(){
+  scan(txt=>{
+    const p=S.prods.find(x=>x.barcode===txt);
+    if(!p){beep(0);return toast('باركود غير معروف: '+txt)}
+    const c=S.stk.cnt[p.id]||(S.stk.cnt[p.id]={q:0,u:null});
+    c.q=+(c.q+1).toFixed(3);stkSave();beep(1);toast(p.name+': '+fmt(c.q)+(c.u?' (بوحدة مختارة)':'')+' ');stkRowUpd(p.id)
+  },'امسح المواد تباعاً: كل مسحة تضيف 1 لكمية الجرد، واضغط إغلاق عند الانتهاء')
+}
+async function stkCancel(){
+  if(!await ok('إلغاء هذا الجرد؟',{msg:'تُحذف مسودة الجرد وكل ما أدخلته. لا يتأثر المخزون.',danger:true,yes:'إلغاء الجرد',no:'رجوع'}))return;
+  try{localStorage.removeItem(stkKey(S.stkWh))}catch(e){}
+  S.stk=null;S.stkWh=null;stocktakeV()
+}
+function stkReview(){
+  const d=S.stk,w=S.whs.find(x=>x.id==S.stkWh)||{},ls=stkLines(),cs=can('costs');
+  const unc=ls.filter(l=>l.c===null).length,dl=ls.filter(l=>l.diff!==0),sv=dl.filter(l=>l.diff>0).reduce((a,l)=>a+(l.val||0),0),hv=dl.filter(l=>l.diff<0).reduce((a,l)=>a+(l.val||0),0);
+  $('#v').innerHTML=`<div class=card><b>مراجعة الجرد: ${esc(d.label)}</b> <span class=m>· ${esc(w.name||'')}</span>
+  <div class=it><span>عدد المواد</span><b>${ls.length}</b></div>
+  <div class=it><span>تم جردها</span><b>${ls.length-unc}</b></div>
+  <div class=it><span>لم تُجرد</span><b class="${unc?'neg':''}">${unc}</b></div>
+  <div class=it><span>مواد فيها فروق</span><b>${dl.length}</b></div>
+  ${cs?`<div class=it><span>قيمة الزيادة</span><b>${fmt(sv)}</b></div><div class=it><span>قيمة العجز</span><b class=neg>${fmt(Math.abs(hv))}</b></div><div class=it><span><b>صافي الفرق</b></span><b class="${sv+hv<0?'neg':''}">${fmt(sv+hv)}</b></div><div class=m>بالليرة، بمتوسط تكلفة كل مادة.</div>`:''}
+  ${unc?`<label class=m style="display:flex;gap:6px;align-items:flex-start;margin:8px 0"><input type=checkbox style="width:auto;margin:3px 0 0" ${d.zero?'checked':''} onchange="stkZero(this.checked)"> اعتبار المواد غير المجرودة (${unc}) كمية صفر، أي عجز كامل. اتركه غير مفعّل لتبقى كمياتها كما هي.</label>`:''}
+  <div class=row style="margin-top:8px"><button class=b onclick="stkApply()" ${dl.length?'':'disabled'}>تطبيق التسوية (${dl.length})</button></div>
+  <div class=row style="margin-top:6px"><button class="b s" onclick="stkPrint(stkRepData(null))">🖨 طباعة</button><button class="b s" onclick="stkPdf(stkRepData(null))">📄 PDF</button></div>
+  <button class="b s" style="width:100%;margin-top:6px" onclick="S.stkView='count';stocktakeV()">رجوع للعدّ</button></div>
+  <div class=card><b>الفروقات</b>${dl.map(l=>`<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(l.p.name)}</b><b class="${l.diff<0?'neg':'ok'}">${l.diff>0?'+':''}${fmt(l.diff)} ${esc(l.p.unit||'')}</b></div><div class=m>النظام ${fmt(l.snap)} ← الفعلي ${fmt(l.eff)}${cs?' · '+fmt(l.val)+' ل.س':''}${l.mv?` · تحرّك بعد بدء الجرد ${l.mv>0?'+':''}${fmt(l.mv)} (يُراعى تلقائياً)`:''}</div></div>`).join('')||'<div class=m>لا توجد فروقات</div>'}</div>`
+}
+function stkZero(v){S.stk.zero=!!v;stkSave();stkReview()}
+async function stkApply(...a){return runMutationOnce('stkApply',()=>_once_stkApply(...a))}
+async function _once_stkApply(){
+  if(!navigator.onLine)return toast('تطبيق التسوية يحتاج اتصالاً بالإنترنت');
+  if(!await ok('تطبيق تسوية الجرد؟',{msg:'ستُعدَّل كميات المخزون وتُسجَّل قيود الفروقات (عجز/زيادة) تلقائياً. للتراجع تحتاج تسوية جديدة.',danger:true,yes:'تطبيق',no:'رجوع'}))return;
+  toast('جارٍ تحديث الأرصدة...');await refresh();
+  const d=S.stk,ls=stkLines().filter(l=>l.diff!==0&&!d.done[l.p.id]),tot=ls.length;let n=0;
+  for(const l of ls){
+    const target=Math.max(0,+(l.eff+(l.live-l.snap)).toFixed(6));
+    if(Math.abs(target-l.live)<1e-9){d.done[l.p.id]=1;continue}
+    d.applied[l.p.id]=d.applied[l.p.id]||uid();stkSave();
+    toast('جارٍ التسوية '+(++n)+' من '+tot+'...');
+    const r=await call('post_stock_adjust_wh',{p_wh:S.stkWh,p_shop:S.shop.id,p_client:d.applied[l.p.id],p_product:l.p.id,p_new_qty:target,p_reason:'جرد سنوي: '+d.label});
+    if(r===undefined){stkSave();return toast('توقّفت التسوية عند «'+l.p.name+'». ما طُبّق محفوظ؛ أعد المحاولة لإكمال الباقي.')}
+    d.done[l.p.id]=1;stkSave()
+  }
+  await refresh();stkFinish()
+}
+function stkRepData(applied){
+  const d=S.stk,w=S.whs.find(x=>x.id==S.stkWh)||{},ls=stkLines(),cs=can('costs');
+  return {label:d.label,wh:w.name||'',started:d.started,applied,zero:!!d.zero,cs,unc:ls.filter(l=>l.eff===null).length,
+    rows:ls.filter(l=>l.eff!==null).map(l=>({n:l.p.name,u:l.p.unit||'',s:l.snap,c:l.eff,d:l.diff,v:cs?Math.round(l.val*100)/100:null}))}
+}
+function stkSheetData(){
+  const d=S.stk,w=S.whs.find(x=>x.id==S.stkWh)||{},ls=stkLines();
+  return {sheet:true,blind:$('#skb')?$('#skb').checked:true,label:d.label,wh:w.name||'',started:d.started,rows:ls.map(l=>({n:l.p.name,u:l.p.unit||'',s:l.snap}))}
+}
+function stkFinish(){
+  const rec={id:uid(),...stkRepData(new Date().toISOString())};
+  const a=stkArc();a.unshift(rec);
+  try{localStorage.setItem(stkArcKey(),JSON.stringify(a.slice(0,10)))}catch(e){toast('تعذّر حفظ المحضر على الجهاز؛ اطبعه الآن')}
+  try{localStorage.removeItem(stkKey(S.stkWh))}catch(e){}
+  S.stk=null;S.stkWh=null;S.stkView='count';S.stkRec=rec;
+  toast('تمت تسوية الجرد ✓');stkArcView(rec.id)
+}
+function stkArcView(id){
+  const r=stkArc().find(x=>x.id==id)||(S.stkRec&&S.stkRec.id==id?S.stkRec:null);
+  if(!r)return toast('لم يُعثر على المحضر');
+  S.stkRec=r;const dl=r.rows.filter(x=>x.d!==0);
+  $('#v').innerHTML=`<div class=card><b>${esc(r.label)}</b> <span class=m>· ${esc(r.wh)}</span><div class=m>تمت التسوية: ${stkD(r.applied)}</div><div class=m style="margin-top:4px">${stkSum(r)}</div>
+  <div class=row style="margin-top:8px"><button class=b onclick="stkPrint(S.stkRec)">🖨 طباعة المحضر</button><button class="b s" onclick="stkPdf(S.stkRec)">📄 PDF</button></div>
+  <button class="b s" style="width:100%;margin-top:6px" onclick="stocktakeV()">رجوع</button></div>
+  <div class=card><b>الفروقات (${dl.length})</b>${dl.map(x=>`<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.n)}</b><b class="${x.d<0?'neg':'ok'}">${x.d>0?'+':''}${fmt(x.d)} ${esc(x.u)}</b></div><div class=m>النظام ${fmt(x.s)} ← الفعلي ${fmt(x.c)}${r.cs&&x.v!==null?' · '+fmt(x.v)+' ل.س':''}</div></div>`).join('')||'<div class=m>لا توجد فروقات</div>'}</div>`
+}
+async function stkArcDel(id){
+  if(!await ok('حذف المحضر؟',{msg:'يُحذف من هذا الجهاز فقط ولا يتأثر المخزون.',danger:true,yes:'حذف',no:'رجوع'}))return;
+  try{localStorage.setItem(stkArcKey(),JSON.stringify(stkArc().filter(x=>x.id!=id)))}catch(e){}
+  stocktakeV()
+}
+/* --- طباعة وPDF --- */
+const stkTitle=R=>R.sheet?'ورقة جرد المخزون':(R.applied?'محضر جرد وتسوية المخزون':'تقرير الجرد (قبل التسوية)');
+const stkMeta=R=>`${esc(R.label)} · المستودع: ${esc(R.wh)} · بدء الجرد: ${stkD(R.started)}${R.applied?' · تاريخ التسوية: '+stkD(R.applied):''}`;
+const stkSign=()=>'<div style="display:flex;justify-content:space-between;margin-top:34px;font-size:12px"><span>أمين المستودع: ..............</span><span>المحاسب: ..............</span><span>المدير: ..............</span></div>';
+function stkSum(R){
+  if(R.sheet)return '';
+  const dl=R.rows.filter(r=>r.d!==0),sv=dl.filter(r=>r.d>0).reduce((a,r)=>a+(r.v||0),0),hv=dl.filter(r=>r.d<0).reduce((a,r)=>a+(r.v||0),0);
+  return `المواد المجرودة: ${R.rows.length}${R.unc?` · غير المجرودة: ${R.unc}${R.zero?' (اعتُبرت صفراً)':' (تُركت دون تعديل)'}`:''} · مواد فيها فروق: ${dl.length}`+(R.cs?`<br>قيمة الزيادة: ${fmt(sv)} · قيمة العجز: ${fmt(Math.abs(hv))} · <b>صافي الفرق: ${fmt(sv+hv)} ل.س</b>`:'')
+}
+function stkTbl(R,rows,off,th,td){
+  const h=R.sheet?`<tr><th ${th}>#<th ${th}>المادة<th ${th}>الوحدة${R.blind?'':`<th ${th}>كمية النظام`}<th ${th}>الكمية الفعلية<th ${th}>ملاحظات</tr>`
+    :`<tr><th ${th}>#<th ${th}>المادة<th ${th}>الوحدة<th ${th}>النظام<th ${th}>الفعلي<th ${th}>الفرق${R.cs?`<th ${th}>القيمة`:''}</tr>`;
+  const b=rows.map((r,i)=>R.sheet
+    ?`<tr><td ${td}>${off+i+1}<td ${td}>${esc(r.n)}<td ${td}>${esc(r.u)}${R.blind?'':`<td ${td}>${fmt(r.s)}`}<td ${td}><div style="height:18px;min-width:70px"></div><td ${td}><div style="height:18px;min-width:60px"></div></tr>`
+    :`<tr><td ${td}>${off+i+1}<td ${td}>${esc(r.n)}<td ${td}>${esc(r.u)}<td ${td}>${fmt(r.s)}<td ${td}>${fmt(r.c)}<td ${td}>${r.d===0?'-':(r.d>0?'+':'')+fmt(r.d)}${R.cs?`<td ${td}>${r.d===0?'-':fmt(r.v)}`:''}</tr>`).join('');
+  return `<thead>${h}</thead><tbody>${b}</tbody>`
+}
+function stkPrint(R){
+  const th='style="border:1px solid #444;padding:3px 5px;text-align:start;background:#eee"',td='style="border:1px solid #444;padding:3px 5px"';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;font-size:15px;margin:4px 0">${stkTitle(R)}</div><div style="text-align:center;font-size:11px">${stkMeta(R)}</div><hr>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">${stkTbl(R,R.rows,0,th,td)}</table><div style="margin-top:8px;font-size:12px">${stkSum(R)}</div>${stkSign()}`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  $('#rcpt').classList.add('wide');
+  addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
+  print()
+}
+async function stkPdf(R){
+  toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const N=22,ch=[];for(let i=0;i<R.rows.length;i+=N)ch.push(R.rows.slice(i,i+N));if(!ch.length)ch.push([]);
+    const pages=ch.map((c,pi)=>{const last=pi==ch.length-1;
+      return {title:stkTitle(R),sub:stkMeta(R),body:`<table style="width:100%;border-collapse:collapse">${stkTbl(R,c,pi*N,TH,TD)}</table>`+(last?`<div style="margin-top:12px;font-size:13px">${stkSum(R)}</div>${stkSign()}`:''),last}});
+    S.pdfWho='';
+    pdfDialog(await pdfBuild(pages),`stocktake-${today()}.pdf`,`${stkTitle(R)} - ${R.label}`,'')
+  }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+
 /* ---- وحدات الكمية والعروض التجارية (في تعديل المادة) ---- */
 function uoV(pid){
   if(S.tab==='offers')return offersV();
