@@ -347,7 +347,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],recon:['vouchers','accounts'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],recon:['vouchers','accounts'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',audit:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -393,7 +393,7 @@ plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
 gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k==='recon'?'check':k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k==='recon'?'check':k==='audit'?'hist':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[,٬\s]/g,'');
@@ -539,7 +539,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','recon','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','recon','acc','rep','curr']],['الإدارة',['memo','team','audit','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -699,7 +699,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',debt:'الديون',recon:'مطابقة الحسابات',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',audit:'سجل العمليات',debt:'الديون',recon:'مطابقة الحسابات',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -723,7 +723,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,recon:reconV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,recon:reconV,audit:auditV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -1706,6 +1706,15 @@ const GUIDE=[
 <li><b>للتثبيت كتطبيق:</b> افتح الموقع من Chrome، واضغط زر <b>📲 تثبيت التطبيق</b> أسفل الصفحة إن ظهر، أو النقاط الثلاث ثم <b>تثبيت التطبيق</b>. على الآيفون: Safari ← مشاركة ← إضافة إلى الشاشة الرئيسية.</li>
 <li>إذا لم يظهر خيار التثبيت اضغط <b>فحص التثبيت</b> في آخر هذه الصفحة ليخبرك ما الناقص.</li>
 <li>مسح الباركود بالكاميرا يطلب إذن الكاميرا أول مرة، ويحتاج إنترنت مرة واحدة لتحميله.</li></ul>`},
+{t:'🕵️ سجل العمليات (للمالك)',o:1,h:`<p class=m>يسجّل البرنامج تلقائياً من فعل ماذا ومتى، لتعرف ما جرى عندما يعمل عدة مستخدمين. تجده في <b>المزيد ← سجل العمليات</b> وهو للمالك وحده.</p>
+<ul>
+<li><b>ما يُسجَّل:</b> الفواتير وإلغاؤها، والسندات والقيود (قبض، دفع، تسويات)، وحركات المخزون (جرد، تحويل، تصنيع...)، وإضافة المواد وتعديل أسعارها وحذفها، وإضافة الزبائن والموردين، وإضافة المستخدمين وتعديل صلاحياتهم وإزالتهم، ومطابقات الحسابات، والاسترجاع والتصفير.</li>
+<li><b>الاستعراض:</b> حدّد الفترة (افتراضياً آخر 7 أيام) ونوع العملية والمستخدم. تظهر كل عملية بوقتها واسم المستخدم (إيميله) وتفاصيلها. اضغط «تحميل المزيد» لما هو أقدم، و«طباعة» لطباعة النتائج المعروضة.</li>
+<li>تعديل الفاتورة يظهر كإلغاء للفاتورة القديمة ثم فاتورة جديدة.</li>
+<li>مبالغ السندات والقيود تظهر بالليرة (القيمة المحاسبية)، ومبالغ الفواتير بعملة الفاتورة.</li>
+<li>السجل <b>لا يدخل النسخ الاحتياطي</b> ولا يتأثر بالاسترجاع أو التصفير، ولا يمكن حذفه من البرنامج، فيبقى أثر كل ما حدث. يُسجَّل الاسترجاع والتصفير نفسهما فيه.</li>
+<li>لا يُسجَّل تسجيل الدخول، ولا تعديل بيانات الزبائن والموردين، ولا ما سبق تفعيل الميزة. وعمليات الضبط المباشرة من قاعدة البيانات تظهر باسم «النظام».</li>
+<li>يحتاج إنترنت، ويعمل بعد تنفيذ ملف migration6_audit_log.sql.</li></ul>`},
 {t:'💾 النسخ الاحتياطي والاسترجاع',o:1,h:`<ul>
 <li>تبويب <b>النسخ الاحتياطي</b> (للمالك): يأخذ البرنامج <b>نسخة تلقائية يومياً</b> عند فتحك له، ويحتفظ بآخر 7 نسخ.</li>
 <li><b>إنشاء نسخة الآن</b> قبل أي عملية كبيرة، و<b>تنزيل على جهازي</b> لتحتفظ بملف خارج النظام (افعلها كل أسبوع).</li>
@@ -2140,6 +2149,76 @@ async function rcPdf(R){
     S.pdfWho='';
     pdfDialog(await pdfBuild(pages),`reconciliation-${R.asof}.pdf`,`${rcTitle(R)} - ${R.name}`,'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+
+/* ---- سجل العمليات (للمالك) ---- */
+const AUC={all:null,inv:['sale','sale_void','purchase','purchase_void'],vch:['entry','recon'],stk:['stock'],prd:['product_add','product_price','product_delete','partner_add'],team:['member_add','member_change','member_remove'],sys:['restore_or_reset']};
+const AUCL=[['all','كل العمليات'],['inv','الفواتير'],['vch','السندات والقيود'],['stk','حركات المخزون'],['prd','المواد والزبائن'],['team','المستخدمون'],['sys','الاسترجاع والتصفير']];
+const AUL={sale:'فاتورة بيع',sale_void:'إلغاء فاتورة بيع',purchase:'فاتورة شراء',purchase_void:'إلغاء فاتورة شراء',stock:'حركة مخزون',product_add:'إضافة مادة',product_price:'تعديل أسعار مادة',product_delete:'حذف مادة',partner_add:'إضافة زبون / مورد',member_add:'إضافة مستخدم',member_change:'تعديل صلاحيات مستخدم',member_remove:'إزالة مستخدم',restore_or_reset:'استرجاع نسخة أو تصفير بيانات',recon:'مطابقة حساب'};
+const AUE={receipt:'سند قبض',payment:'سند دفع',voucher:'سند / قيد',void:'إلغاء سند'};
+const auLbl=r=>r.action==='entry'?(AUE[r.ref_type]||'قيد'+(r.ref_type?' ('+r.ref_type+')':'')):r.action==='stock'?'حركة مخزون'+(r.ref_type?' ('+r.ref_type+')':''):(AUL[r.action]||r.action);
+function auSum(r){
+  const d=r.detail||{},cs=d.currency==='USD'?' $':' ل.س',pn=id=>id?((S.parts.find(x=>x.id==id)||{}).name||''):'',pr=id=>id?((S.prods.find(x=>x.id==id)||{}).name||''):'';
+  switch(r.action){
+    case 'sale':case 'purchase':{const p=pn(d.partner_id);return (p?p+' · ':'')+'الإجمالي '+fmt(d.total)+cs+(+d.discount>0?' · حسم '+fmt(d.discount):'')+(+d.paid<+d.total?' · آجل':'')}
+    case 'sale_void':case 'purchase_void':{const p=pn(d.partner_id);return (p?p+' · ':'')+'الإجمالي '+fmt(d.total)+cs}
+    case 'entry':return (d.description||'')+(+r.amount?' · '+fmt(r.amount)+' ل.س':'')
+    case 'stock':return (pr(d.product_id)||'مادة')+' · '+(+d.qty>0?'+':'')+fmt(d.qty)
+    case 'product_add':case 'product_delete':return d.name||''
+    case 'product_price':{const o=d.old||{},n=d.new||{};return (d.name||'')+' · مفرق '+fmt(o.retail)+' ← '+fmt(n.retail)+(+o.whole!==+n.whole?' · جملة '+fmt(o.whole)+' ← '+fmt(n.whole):'')}
+    case 'partner_add':return (d.name||'')+(d.kind?' ('+({customer:'زبون',supplier:'مورد',both:'زبون ومورد'}[d.kind]||d.kind)+')':'')
+    case 'member_add':case 'member_change':case 'member_remove':return 'الدور: '+(d.role==='owner'?'مالك':'مستخدم')+(Array.isArray(d.perms)?' · '+d.perms.length+' صلاحية':'')
+    case 'recon':return (d.status==='matched'?'مطابق':'غير مطابق · الفرق '+fmt(d.diff))+' · حتى '+(d.as_of||'')
+    default:return d.note||''
+  }
+}
+const auT=iso=>{if(!iso)return '';const d=new Date(iso);return ld(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+const auRef=()=>S.au||(S.au={from:dAgo(6),to:today(),cat:'all',user:'',rows:[],more:false,users:{}});
+async function auditV(){
+  const o=auRef();
+  $('#v').innerHTML=`<div class=card><b>🕵️ سجل العمليات</b>
+  <div class=m>من فعل ماذا ومتى: الفواتير والإلغاء، السندات، حركات المخزون، تعديل الأسعار، المستخدمون، الاسترجاع والتصفير. للمالك فقط.</div>
+  <div class=row style="margin-top:8px"><div><label class=fl for=auf>من</label><input type=date id=auf value="${o.from}" max="${today()}" onchange="auRef().from=this.value;auLoad(true)"></div>
+  <div><label class=fl for=aut>إلى</label><input type=date id=aut value="${o.to}" max="${today()}" onchange="auRef().to=this.value;auLoad(true)"></div></div>
+  <div class=row style="margin-top:6px"><select id=auc aria-label="نوع العملية" onchange="auRef().cat=this.value;auLoad(true)">${AUCL.map(([k,l])=>`<option value="${k}"${o.cat===k?' selected':''}>${l}</option>`).join('')}</select>
+  <select id=auu aria-label="المستخدم" onchange="auRef().user=this.value;auLoad(true)"><option value="">كل المستخدمين</option></select></div>
+  <button class="b s" style="width:100%;margin-top:8px" onclick="auPrint()">🖨 طباعة النتائج المعروضة</button></div>
+  <div id=aul><div class=m style="padding:8px">جارٍ التحميل...</div></div>`;
+  auLoad(true)
+}
+async function auLoad(reset){
+  const o=auRef(),el=$('#aul');if(!el)return;
+  if(!navigator.onLine){el.innerHTML='<div class=card><div class=m>سجل العمليات يحتاج اتصالاً بالإنترنت.</div></div>';return}
+  if(o.from&&o.to&&o.from>o.to)return toast('تاريخ البداية بعد تاريخ النهاية');
+  if(reset){o.rows=[];o.more=false}
+  const before=!reset&&o.rows.length?o.rows[o.rows.length-1].id:null;
+  const {data,error}=await db.rpc('audit_list',{p_shop:S.shop.id,p_from:o.from||null,p_to:o.to||null,p_user:o.user||null,p_actions:AUC[o.cat]||null,p_limit:100,p_before:before});
+  if(error){
+    const m=String(error.message||'');
+    el.innerHTML=/audit_list|schema cache|does not exist|PGRST202/i.test(m)||error.code==='42883'||error.code==='PGRST202'?`<div class=card><b>غير مفعّل بعد</b><div class=m>نفّذ ملف migration6_audit_log.sql في قاعدة البيانات ثم أعد تحميل الصفحة.</div></div>`:`<div class=card><div class=m>${esc(m)}</div></div>`;
+    return
+  }
+  const rows=data||[];o.rows=o.rows.concat(rows);o.more=rows.length>=100;
+  o.rows.forEach(r=>{if(r.user_id&&r.user_email)o.users[r.user_id]=r.user_email});
+  const us=$('#auu');if(us){us.innerHTML='<option value="">كل المستخدمين</option>'+Object.entries(o.users).map(([id,em])=>`<option value="${id}"${o.user===id?' selected':''}>${esc(em)}</option>`).join('')}
+  auDraw()
+}
+function auDraw(){
+  const o=auRef(),el=$('#aul');if(!el)return;
+  el.innerHTML=`<div class=card><b>${o.rows.length}${o.more?'+':''} عملية</b>
+  ${o.rows.map(r=>`<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(auLbl(r))}</b><span class=m>${auT(r.at)}</span></div>
+  <div class=m>${esc(auSum(r))}</div><div class=m>👤 ${esc(r.user_email||'النظام')}</div></div>`).join('')||'<div class=m style="padding:8px 0">لا توجد عمليات في هذه الفترة</div>'}
+  ${o.more?'<button class="b s" style="width:100%;margin-top:8px" onclick="auLoad(false)">تحميل المزيد</button>':''}</div>`
+}
+function auPrint(){
+  const o=auRef();if(!o.rows.length)return toast('لا توجد نتائج للطباعة');
+  const th='style="border:1px solid #444;padding:3px 5px;text-align:start;background:#eee"',td='style="border:1px solid #444;padding:3px 5px"';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;font-size:15px;margin:4px 0">سجل العمليات</div><div style="text-align:center;font-size:11px">${o.from} ← ${o.to}${o.cat!=='all'?' · '+esc((AUCL.find(x=>x[0]===o.cat)||[])[1]||''):''}</div><hr>
+  <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th ${th}>الوقت<th ${th}>المستخدم<th ${th}>العملية<th ${th}>التفاصيل</tr></thead><tbody>${o.rows.map(r=>`<tr><td ${td}>${auT(r.at)}<td ${td}>${esc(r.user_email||'النظام')}<td ${td}>${esc(auLbl(r))}<td ${td}>${esc(auSum(r))}</tr>`).join('')}</tbody></table>${o.more?'<div style="font-size:11px;margin-top:6px">ملاحظة: القائمة جزئية، حمّل المزيد قبل الطباعة لعرض كل العمليات.</div>':''}`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  $('#rcpt').classList.add('wide');
+  addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
+  print()
 }
 
 /* ---- تاريخ الصلاحية (دفعات) ---- */
