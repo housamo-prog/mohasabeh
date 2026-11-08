@@ -347,7 +347,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],recon:['vouchers','accounts'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',co:'o',bkp:'o',curr:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -393,7 +393,7 @@ plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
 gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k==='recon'?'check':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[,٬\s]/g,'');
@@ -539,7 +539,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','recon','acc','rep','curr']],['الإدارة',['memo','team','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -699,7 +699,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',debt:'الديون',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',debt:'الديون',recon:'مطابقة الحسابات',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -723,7 +723,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,recon:reconV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -1029,7 +1029,7 @@ async function partnerV(id){
   ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}${cl}
   ${c&&r>0?`<button class="b wa" style="width:100%;margin:8px 0" onclick="remind('${id}')">${ic('wa',18)} تذكير عبر واتساب</button><div class="m rl" data-rl="${id}" style="text-align:center;margin:-4px 0 8px">${rlTxt(id)}</div>`:''}
   <div class=row>${c?`<button class=b onclick="rcvGo('${id}','receipt')">سند قبض</button>`:''}${sp?`<button class=b onclick="rcvGo('${id}','payment')">سند دفع</button>`:''}</div>
-  <div class=row style="margin-top:8px">${sp?`<button class="b s" onclick="supplierPricesV('${id}')">أسعار الشراء</button>`:''}<button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
+  <div class=row style="margin-top:8px">${sp?`<button class="b s" onclick="supplierPricesV('${id}')">أسعار الشراء</button>`:''}${tabOk('recon')?`<button class="b s" onclick="reconGo('partner','${id}')">مطابقة الحساب</button>`:''}<button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
   <button class="b s" style="width:100%;margin-top:8px" onclick="debtV()">رجوع</button></div><div class=card id=stm></div>`;
   stmtCard({partner:id,nat:p.kind!='supplier',title:'كشف حساب '+KL(p.kind)+' '+p.name+(p.kind=='both'?' (الرصيد الصافي: موجب = لنا عليه، سالب = له علينا)':'')})
 }
@@ -1157,7 +1157,7 @@ function acctOpen(id){
   $('#v').innerHTML=`<div class=card><b>${esc(a.code)} · ${esc(a.name)}</b>
   <div class=m>${TYP[a.type]}${a.sys_code?' · حساب يستخدمه البرنامج':''}${a.is_group?' · مجموعة':''}</div>
   <h3>الرصيد: ${fmt(totOf(a))}</h3>
-  <div class=row><button class="b s" onclick="editAcctForm()">تعديل</button>${a.sys_code||a.is_group?'':`<button class="b s neg" onclick="delAcct()">حذف</button>`}<button class="b s" onclick="acctV()">رجوع</button></div><div id=af></div></div>
+  <div class=row>${a.is_cashbox&&!a.is_group&&tabOk('recon')?`<button class="b s" onclick="reconGo('account','${a.id}')">مطابقة الصندوق</button>`:''}<button class="b s" onclick="editAcctForm()">تعديل</button>${a.sys_code||a.is_group?'':`<button class="b s neg" onclick="delAcct()">حذف</button>`}<button class="b s" onclick="acctV()">رجوع</button></div><div id=af></div></div>
   <div class=card id=stm></div>`;
   stmtCard({account:id,usd:a.sys_code=='1011',nat:a.type=='asset'||a.type=='expense',title:'كشف حساب '+a.code+' '+a.name})
 }
@@ -1594,6 +1594,19 @@ const GUIDE=[
 <li>في كشف حساب الزبون أو المورد اختر <b>مختصر</b> (الحركات فقط) أو <b>تفصيلي (بالمواد)</b> لترى تحت كل فاتورة موادها وكمياتها وأسعارها وإجماليها والمدفوع منها، ويمكنك طباعة أي منهما.</li>
 <li><b>عملة الكشف:</b> يفتح كشف الزبون أو المورد بعملة حسابه المسجّلة. وبالزرين <b>بالليرة / بالدولار</b> أعلى الكشف تغيّر العرض. حساب الدولار يُعرض بالليرة بقيمة كل عملية وقت تسجيلها، وحساب الليرة يُعرض بالدولار محوّلاً بسعر الصرف الحالي (يُكتب السعر أعلى الكشف). الطباعة وPDF تتبعان العملة المعروضة.</li>
 <li>اضغط على الاسم: ترى كشف الحساب (بفترة من/إلى وطباعة)، وتسجّل <b>سند قبض</b> من الزبون أو <b>سند دفع</b> للمورد، أو <b>رصيد افتتاحي</b> لدين قديم.</li></ul>`},
+{t:'🔁 مطابقة الحسابات حسب التاريخ',o:1,h:`<p class=m>تطابق رصيد زبون أو مورد أو صندوق حتى تاريخ معيّن مع رصيد الطرف (أو مع عدّ الصندوق الفعلي)، وتحفظ النتيجة وتطبع محضراً. تجدها في <b>المزيد ← مطابقة الحسابات</b>، أو بزر <b>مطابقة الحساب</b> في صفحة الزبون أو المورد، وزر <b>مطابقة الصندوق</b> في صفحة الصندوق (تبويب الحسابات).</p>
+<ol>
+<li>اختر النوع (الزبائن، الموردون، الصناديق) ثم الحساب، وحدّد <b>حتى تاريخ</b> المطابقة.</li>
+<li>اضغط <b>عرض الرصيد والحركات</b>. يظهر <b>رصيد النظام</b> حتى ذلك التاريخ بعملة حساب الطرف، والحركات منذ آخر مطابقة ناجحة (أو منذ بداية السنة إن لم توجد). تستطيع تحديد «عرض الحركات من» بنفسك.</li>
+<li>اطبع المحضر أو أرسل PDF للطرف ليقارنه بدفاتره. في الطباعة قبل إدخال أي رقم يبقى سطر «الرصيد المؤكد» فارغاً ليملأه الطرف بخطه.</li>
+<li>اكتب <b>الرصيد المؤكد</b> (من كشف الطرف، أو العدّ الفعلي للصندوق). يظهر الفرق فوراً: <b>مطابق ✓</b> أو مقدار الفرق وجهته.</li>
+<li>اضغط <b>حفظ المطابقة</b>. تُحفظ بتاريخها ورصيد النظام وقتها والفرق وملاحظتك، وتظهر في سجل المطابقات للحساب، ومنها تعيد طباعة المحضر أو PDF.</li></ol>
+<ul>
+<li><b>إشارة الرصيد:</b> للزبون موجب = لنا عليه. للمورد موجب = له علينا. للصندوق موجب = رصيد متوفر. وصندوق الدولار والحسابات بالدولار تُقاس بالدولار.</li>
+<li><b>فرق الصندوق:</b> يمكنك بزر <b>تسوية الفرق</b> (لصناديق الليرة) ترحيل قيد بالفرق مقابل حساب مصروف (للعجز) أو إيراد (للزيادة) تختاره. أنشئ حساباً مثل «فروقات الصندوق» من تبويب الحسابات إن لم يوجد. صندوق الدولار تُسوّى فروقه يدوياً من السندات.</li>
+<li><b>فرق الزبون أو المورد:</b> لا يُرحَّل منه شيء تلقائياً. راجع الحركات مع الطرف وصحّح الفاتورة أو السند الخاطئ، ثم أعد المطابقة.</li>
+<li>سجل المطابقات يحفظه الخادم وتراه كل الأجهزة، ويدخل في النسخ الاحتياطي. حذف سجل مطابقة لا يمس القيود المحاسبية.</li>
+<li>تحتاج إنترنت، ويطلب البرنامج صلاحية السندات أو الحسابات.</li></ul>`},
 {t:'🧾 الفواتير',o:0,h:`<ul>
 <li>تبويب <b>الفواتير</b> يعرض آخر الفواتير. اضغط على فاتورة لترى تفاصيلها (وتفاصيل الحسم إن وُجد) ولطباعتها مجدداً.</li>
 <li>البنود المجانية من العروض تظهر بسعر صفر وعليها علامة «مجاني». وتظهر لكل بند وحدته (طرد، قطعة...) وملاحظته إن وُجدت، في العرض والطباعة وPDF.</li>
@@ -1922,6 +1935,213 @@ function offList(){
   ${(S.offers[p.id]||[]).filter(o=>!S.ofAct||o.active!==false).map(o=>`<div class=it style="${o.active===false?'opacity:.55':''}"><span>🎁 ${offTxt(p,o)}<br><span class=m>${AO[o.applies_to]||''}${o.active===false?' · موقوف':''}</span></span>${ow?`<span style="display:flex;gap:6px"><button class="b s" style="padding:4px 10px" onclick="togOffer('${o.id}','${p.id}')">${o.active===false?'تفعيل':'إيقاف'}</button><button class="b s neg" style="padding:4px 10px" onclick="delOffer('${o.id}','${p.id}')">حذف</button></span>`:''}</div>`).join('')}</div>`).join('')
   ||`<div class=m style="padding:8px 0">${Object.keys(S.offers).length?'لا توجد عروض مطابقة':'لا توجد عروض تجارية بعد'}</div>`
 }
+/* ---- مطابقة الحسابات حسب التاريخ ---- */
+const RCK={customer:'الزبون',supplier:'المورد',cashbox:'الصندوق'};
+const r2=n=>Math.round((+n||0)*100)/100;
+const rcF=(v,c)=>(c==='USD'?'$':'')+fmt(v)+(c==='USD'?'':' ل.س');
+const rcRef=()=>S.rc||(S.rc={type:'customer',id:'',asof:today(),from:'',conf:'',note:''});
+async function rcAcc(){if(S.ac&&S.ac.length)return;const {data}=await db.from('trial_balance').select('*').order('code');S.ac=data||[]}
+function rcEntBy(kind,id){
+  if(kind==='account'){const a=(S.ac||[]).find(x=>x.id==id);return a?{kind:'account',id:a.id,name:a.code+' '+a.name,nat:a.type=='asset'||a.type=='expense',cur:a.sys_code=='1011'?'USD':'SYP',cash:true}:null}
+  const p=S.parts.find(x=>x.id==id);return p?{kind:'partner',id:p.id,name:p.name,nat:p.kind!='supplier',cur:p.account_currency==='USD'?'USD':'SYP',pk:p.kind}:null
+}
+function rcEnt(){const o=rcRef();return o.id?rcEntBy(o.type==='cashbox'?'account':'partner',o.id):null}
+function rcOpts(){
+  const o=rcRef();
+  if(o.type==='cashbox')return (S.ac||[]).filter(a=>a.is_cashbox&&!a.is_group).map(a=>({id:a.id,name:a.code+' '+a.name}));
+  return S.parts.filter(p=>o.type==='supplier'?p.kind!=='customer':p.kind!=='supplier').map(p=>({id:p.id,name:p.name}))
+}
+async function rcFetch(ent,asof){
+  const {data,error}=await db.rpc('account_statement',{p_shop:S.shop.id,p_account:ent.kind==='account'?ent.id:null,p_partner:ent.kind==='partner'?ent.id:null,p_from:'2000-01-01',p_to:asof});
+  if(error){toast(error.message);return null}
+  const sg=ent.nat?1:-1,u=ent.cur==='USD',rows=(data||[]).map(x=>({d:x.entry_date,desc:x.description||'',dr:r2(u?x.usd_debit:x.debit),cr:r2(u?x.usd_credit:x.credit),bal:r2(sg*(u?x.usd_balance:x.balance))}));
+  return {rows,sys:rows.length?rows[rows.length-1].bal:0}
+}
+function rcSlice(rows,from,after,yr){
+  const y0=(yr||new Date().getFullYear())+'-01-01';
+  const keep=r=>from?r.d>=from:(after?r.d>after:r.d>=y0);
+  const i=rows.findIndex(keep);
+  if(i<0)return {rows:[],opening:rows.length?rows[rows.length-1].bal:0,from:from||after||y0};
+  return {rows:rows.slice(i),opening:i>0?rows[i-1].bal:0,from:from||(after?'بعد '+after:y0)}
+}
+const rcLast=()=>(S.rch||[]).filter(r=>r.status==='matched').sort((a,b)=>a.as_of<b.as_of?1:-1)[0];
+async function reconV(){
+  const o=rcRef();await rcAcc();
+  const ent=rcEnt();
+  $('#v').innerHTML=`<div class=card><b>🔁 مطابقة الحسابات</b>
+  <div class=m>قارن رصيد زبون أو مورد أو صندوق حتى تاريخ معيّن برصيد الطرف (أو بعدّ الصندوق الفعلي)، ثم احفظ نتيجة المطابقة واطبع المحضر.</div>
+  <div class=row style="margin:8px 0">${[['customer','الزبائن'],['supplier','الموردون'],['cashbox','الصناديق']].map(([k,l])=>`<button class="b ${o.type===k?'':'s'}" onclick="rcType('${k}')">${l}</button>`).join('')}</div>
+  <label class=fl for=rce>${RCK[o.type]}</label>
+  <select id=rce onchange="rcPick(this.value)"><option value="">اختر...</option>${rcOpts().map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select>
+  <div class=row><div><label class=fl for=rcd>حتى تاريخ</label><input type=date id=rcd value="${o.asof}" max="${today()}" onchange="S.rc.asof=this.value"></div>
+  <div><label class=fl for=rcf>عرض الحركات من (اختياري)</label><input type=date id=rcf value="${o.from||''}" onchange="S.rc.from=this.value"></div></div>
+  <button class=b style="width:100%;margin-top:8px" onclick="rcShow()">عرض الرصيد والحركات</button></div>
+  <div id=rcr></div><div id=rcs></div><div id=rch></div>`;
+  $('#rce').value=o.id||'';
+  await rcHist();
+  if(ent)rcShow()
+}
+function rcType(k){const o=rcRef();o.type=k;o.id='';o.conf='';o.note='';S.rcd=null;reconV()}
+async function rcPick(id){const o=rcRef();o.id=id;o.conf='';o.note='';S.rcd=null;$('#rcr').innerHTML='';$('#rcs').innerHTML='';await rcHist();if(id)rcShow()}
+function reconGo(kind,id){
+  let type='cashbox';
+  if(kind==='partner'){const p=S.parts.find(x=>x.id==id);type=p&&p.kind==='supplier'?'supplier':'customer'}
+  S.rc={type,id,asof:today(),from:'',conf:'',note:''};S.rcd=null;go('recon')
+}
+async function rcShow(){
+  const o=rcRef(),ent=rcEnt();
+  if(!ent)return toast('اختر الحساب أولاً');
+  if(!o.asof)return toast('اختر التاريخ');
+  if(o.asof>today())return toast('لا يمكن اختيار تاريخ مستقبلي');
+  if(!navigator.onLine)return toast('عرض الرصيد يحتاج اتصالاً بالإنترنت');
+  const c=await rcFetch(ent,o.asof);if(!c)return;
+  const lm=rcLast();
+  S.rcd={ent,asof:o.asof,calc:c,lm,sl:rcSlice(c.rows,o.from||'',(!o.from&&lm)?lm.as_of:'')};
+  rcDraw()
+}
+function rcDraw(){
+  const d=S.rcd,el=$('#rcr');if(!d||!el)return;
+  const e=d.ent,c=d.calc,sl=d.sl,o=rcRef();
+  const NOTE=e.cash?'موجب = رصيد مدين متوفر في الصندوق':e.pk==='supplier'?'موجب = له علينا (نحن مدينون له)':e.pk==='both'?'موجب = لنا عليه، سالب = له علينا':'موجب = لنا عليه (دين على الزبون)';
+  const LBL=e.cash?'الرصيد الفعلي (العدّ)':'الرصيد المؤكد حسب كشف الطرف';
+  el.innerHTML=`<div class=card><b>${esc(e.name)}</b> <span class=m>· حتى ${d.asof}</span>
+  <div class=m>${d.lm?'آخر مطابقة ناجحة: '+d.lm.as_of:'لا توجد مطابقة ناجحة سابقة'}</div>
+  <div class=it><span>رصيد النظام حتى ${d.asof}</span><b>${rcF(c.sys,e.cur)}</b></div>
+  <div class=m>${NOTE}${e.cur==='USD'?' · بالدولار':''}</div>
+  <label class=fl for=rcc>${LBL}</label>
+  <input id=rcc type=number step=any inputmode=decimal dir=ltr placeholder="اكتب الرصيد" value="${esc(o.conf||'')}" oninput="rcLive()">
+  <div id=rcl style="margin:6px 0"></div>
+  <input id=rcn maxlength=300 placeholder="ملاحظات (اختياري)" value="${esc(o.note||'')}" oninput="S.rc.note=this.value">
+  ${S.noRc?`<div class=m style="margin-top:6px">حفظ المطابقة غير مفعّل بعد: نفّذ ملف migration5_account_reconciliation.sql في قاعدة البيانات. الطباعة تعمل.</div>`:`<button class=b style="width:100%;margin-top:6px" onclick="rcSave()">حفظ المطابقة</button>`}
+  <div class=row style="margin-top:6px"><button class="b s" onclick="rcPrint(rcRepCur())">🖨 طباعة المحضر</button><button class="b s" onclick="rcPdf(rcRepCur())">📄 PDF</button></div></div>
+  <div class=card><b>الحركات</b> <span class=m>${sl.from?'من '+esc(sl.from):''}</span>
+  <div class=it><span>الرصيد السابق</span><b>${rcF(sl.opening,e.cur)}</b></div>
+  ${sl.rows.map(x=>`<div class=it><span>${x.d}<br><span class=m>${esc(x.desc)}</span></span><span style="text-align:end">${x.dr?'مدين '+fmt(x.dr):(x.cr?'دائن '+fmt(x.cr):'')}<br><b>${rcF(x.bal,e.cur)}</b></span></div>`).join('')||'<div class=m style="padding:6px 0">لا توجد حركات في هذه الفترة</div>'}</div>`;
+  rcLive()
+}
+function rcLive(){
+  const d=S.rcd,l=$('#rcl'),i=$('#rcc');if(!d||!l)return;
+  if(i)S.rc.conf=i.value;
+  const s=String(S.rc.conf||'').trim();
+  if(s===''){l.innerHTML='';return}
+  const v=+toEn(s);
+  if(isNaN(v)){l.innerHTML='<span class=neg>أدخل رقماً صحيحاً</span>';return}
+  const df=r2(d.calc.sys-v),cash=d.ent.cash;
+  l.innerHTML=Math.abs(df)<0.005?'<span class=ok><b>مطابق ✓</b></span>':`<span class=neg><b>الفرق ${rcF(Math.abs(df),d.ent.cur)}</b> · ${cash?(df>0?'عجز في الصندوق':'زيادة في الصندوق'):(df>0?'النظام أكبر من رصيد الطرف':'النظام أصغر من رصيد الطرف')}</span>`
+}
+async function rcSave(...a){return runMutationOnce('rcSave',()=>_once_rcSave(...a))}
+async function _once_rcSave(){
+  const d=S.rcd;if(!d)return;
+  const s=String(S.rc.conf||'').trim(),v=+toEn(s);
+  if(s===''||isNaN(v))return toast('أدخل الرصيد المؤكد');
+  if(!navigator.onLine)return toast('حفظ المطابقة يحتاج اتصالاً بالإنترنت');
+  const r=await call('recon_save',{p_shop:S.shop.id,p_client:uid(),p_partner:d.ent.kind==='partner'?d.ent.id:null,p_account:d.ent.kind==='account'?d.ent.id:null,p_as_of:d.asof,p_system:d.calc.sys,p_confirmed:v,p_note:(S.rc.note||'').trim().slice(0,300)||null});
+  if(r===undefined)return;
+  S.rc.conf='';S.rc.note='';toast('تم حفظ المطابقة ✓');await rcHist();rcShow()
+}
+async function rcHist(){
+  const ent=rcEnt();
+  let q=db.from('account_recons').select('*').order('created_at',{ascending:false}).limit(ent?15:10);
+  if(ent)q=q.eq(ent.kind==='partner'?'partner_id':'account_id',ent.id);
+  const {data,error}=await q;
+  if(error){const m=String(error.message||'');S.noRc=/account_recons|schema cache|does not exist/i.test(m)||error.code==='42P01'||error.code==='PGRST205';if(!S.noRc)toast(m);S.rch=[]}
+  else{S.noRc=false;S.rch=data||[]}
+  rcHistDraw()
+}
+const rcName=r=>r.partner_id?((S.parts.find(x=>x.id==r.partner_id)||{}).name||'؟'):(()=>{const a=(S.ac||[]).find(x=>x.id==r.account_id);return a?a.code+' '+a.name:'؟'})();
+function rcHistDraw(){
+  const el=$('#rch');if(!el)return;
+  if(S.noRc)return el.innerHTML=`<div class=card><b>سجل المطابقات</b><div class=m>غير مفعّل بعد. نفّذ ملف migration5_account_reconciliation.sql في قاعدة البيانات ثم أعد تحميل الصفحة.</div></div>`;
+  const ent=rcEnt(),ow=S.role=='owner'||can('accounts');
+  el.innerHTML=`<div class=card><b>${ent?'مطابقات '+esc(ent.name):'آخر المطابقات'}</b>
+  ${(S.rch||[]).map(r=>{const st=r.status==='matched'?['مطابق ✓','']:r.settled_at?['فرق مُسوّى','warn']:['غير مطابق','bad'];
+    return `<div class=it style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(rcName(r))}</b><span class="pill ${st[1]}">${st[0]}</span></div>
+    <div class=m>حتى ${r.as_of} · النظام ${rcF(r.system_balance,r.currency)} · المؤكد ${rcF(r.confirmed_balance,r.currency)}${+r.diff?' · الفرق '+rcF(r.diff,r.currency):''}</div>
+    ${r.note?`<div class=m>📝 ${esc(r.note)}</div>`:''}<div class=m>سُجّلت ${stkD(r.created_at)}</div>
+    <div class=row style="margin-top:6px"><button class="b s" style="padding:5px 10px" onclick="rcPrintRec('${r.id}')">🖨 طباعة</button><button class="b s" style="padding:5px 10px" onclick="rcPdfRec('${r.id}')">📄 PDF</button>
+    ${r.status==='unmatched'&&!r.settled_at&&r.account_id&&r.currency==='SYP'&&can('accounts')?`<button class="b s" style="padding:5px 10px" onclick="rcSettle('${r.id}')">تسوية الفرق</button>`:''}
+    ${ow?`<button class="b s neg" style="padding:5px 10px" onclick="rcDel('${r.id}')">حذف</button>`:''}</div></div>`}).join('')||'<div class=m style="padding:6px 0">لا توجد مطابقات محفوظة بعد</div>'}</div>`
+}
+async function rcDel(...a){return runMutationOnce('rcDel',()=>_once_rcDel(...a))}
+async function _once_rcDel(id){
+  if(!await ok('حذف المطابقة؟',{msg:'يُحذف سجل المطابقة فقط، ولا تتأثر القيود المحاسبية.',danger:true,yes:'حذف',no:'رجوع'}))return;
+  const r=await call('recon_delete',{p_shop:S.shop.id,p_id:id});
+  if(r!==undefined){await rcHist();if(S.rcd)rcShow()}
+}
+function rcSettle(id){
+  const r=(S.rch||[]).find(x=>x.id==id),box=$('#rcs');if(!r||!box)return;
+  const short=+r.diff>0,tp=short?'expense':'revenue';
+  const opts=(S.ac||[]).filter(a=>!a.is_group&&!a.is_cashbox&&!['1100','2100','1200'].includes(a.sys_code)&&a.type===tp);
+  box.innerHTML=`<div class=card style="border-color:var(--p)"><b>تسوية فرق الصندوق</b>
+  <div class=m>${short?'عجز':'زيادة'} بمبلغ ${fmt(Math.abs(r.diff))} ل.س. سيُرحَّل قيد ${short?'مدين الحساب المختار ودائن الصندوق':'مدين الصندوق ودائن الحساب المختار'} بتاريخ اليوم.</div>
+  ${opts.length?`<label class=fl for=rcs_a>${short?'حساب المصروف (مثل عجز الصندوق)':'حساب الإيراد (مثل زيادة الصندوق)'}</label><select id=rcs_a>${opts.map(a=>`<option value="${a.id}">${esc(a.code)} ${esc(a.name)}</option>`).join('')}</select><button class=b style="width:100%;margin-top:6px" onclick="rcSettleDo('${id}')">ترحيل القيد</button>`:`<div class=m>لا يوجد حساب ${short?'مصروف':'إيراد'} مناسب. أنشئ حساباً (مثل «فروقات الصندوق») من تبويب الحسابات ثم عُد.</div>`}
+  <button class="b s" style="width:100%;margin-top:6px" onclick="$('#rcs').innerHTML=''">إغلاق</button></div>`;
+  box.scrollIntoView()
+}
+async function rcSettleDo(...a){return runMutationOnce('rcSettle',()=>_once_rcSettleDo(...a))}
+async function _once_rcSettleDo(id){
+  const r=(S.rch||[]).find(x=>x.id==id),sel=$('#rcs_a');if(!r||!sel)return;
+  if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
+  const short=+r.diff>0,amt=Math.abs(+r.diff);
+  if(!await ok('ترحيل قيد التسوية؟',{msg:'سيُرحَّل قيد بمبلغ '+fmt(amt)+' ل.س ولا يمكن التراجع عنه إلا بسند عكسي.',yes:'ترحيل',no:'رجوع'}))return;
+  const v=await call('post_voucher',{p_shop:S.shop.id,p_client:uid(),p_debit:short?sel.value:r.account_id,p_credit:short?r.account_id:sel.value,p_amount:amt,p_currency:'SYP',p_rate:rate('SYP'),p_desc:'تسوية مطابقة صندوق بتاريخ '+r.as_of});
+  if(v===undefined)return;
+  const s=await call('recon_settle',{p_shop:S.shop.id,p_id:id,p_entry:typeof v==='string'&&v.length>30?v:null});
+  $('#rcs').innerHTML='';
+  if(s!==undefined)toast('تمت التسوية ✓');
+  await rcHist();if(S.rcd)rcShow()
+}
+/* --- المحضر: طباعة وPDF --- */
+function rcRep(ent,asof,sl,rec){
+  const cs=String(S.rc.conf||'').trim(),live=cs!==''&&!isNaN(+toEn(cs))?+toEn(cs):null;
+  const sys=rec?+rec.system_balance:S.rcd.calc.sys,conf=rec?+rec.confirmed_balance:live,df=conf===null?null:r2(sys-conf);
+  return {name:ent.name,kind:ent.cash?'صندوق':ent.pk==='supplier'?'مورد':ent.pk==='both'?'زبون ومورد':'زبون',cash:!!ent.cash,cur:ent.cur,asof,sys,conf,diff:df,
+    status:df===null?null:(Math.abs(df)<0.005?'matched':'unmatched'),settled:!!(rec&&rec.settled_at),note:rec?(rec.note||''):(S.rc.note||''),created:rec?rec.created_at:null,
+    from:sl.from,opening:sl.opening,rows:sl.rows}
+}
+function rcRepCur(){const d=S.rcd;return rcRep(d.ent,d.asof,d.sl,null)}
+async function rcRecRep(id){
+  const r=(S.rch||[]).find(x=>x.id==id);if(!r)return null;
+  const ent=rcEntBy(r.partner_id?'partner':'account',r.partner_id||r.account_id);if(!ent){toast('لم يُعثر على الحساب');return null}
+  if(!navigator.onLine){toast('يحتاج اتصالاً بالإنترنت');return null}
+  const c=await rcFetch(ent,r.as_of);if(!c)return null;
+  const prev=(S.rch||[]).filter(x=>x.status==='matched'&&x.id!==r.id&&x.as_of<r.as_of&&((x.partner_id&&x.partner_id===r.partner_id)||(x.account_id&&x.account_id===r.account_id))).sort((a,b)=>a.as_of<b.as_of?1:-1)[0];
+  return rcRep(ent,r.as_of,rcSlice(c.rows,'',prev?prev.as_of:'',+String(r.as_of).slice(0,4)),r)
+}
+async function rcPrintRec(id){const R=await rcRecRep(id);if(R)rcPrint(R)}
+async function rcPdfRec(id){const R=await rcRecRep(id);if(R)rcPdf(R)}
+const rcTitle=R=>R.cash?'محضر مطابقة صندوق':'محضر مطابقة حساب '+R.kind;
+const rcMeta=R=>`${esc(R.name)} · حتى تاريخ ${R.asof} · العملة: ${R.cur==='USD'?'دولار':'ليرة'}${R.created?' · سُجّلت '+stkD(R.created):''}`;
+const rcRes=R=>R.status===null?'..........':R.status==='matched'?'مطابق':(R.settled?'غير مطابق (فرق مُسوّى بقيد)':'غير مطابق');
+function rcSum(R,td){
+  const cl=R.cash?'الرصيد الفعلي (العدّ)':'الرصيد المؤكد حسب كشف الطرف',F=v=>rcF(v,R.cur);
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px"><tr><td ${td}>رصيد النظام حتى ${R.asof}<td ${td}><b>${F(R.sys)}</b></tr><tr><td ${td}>${cl}<td ${td}><b>${R.conf===null?'.....................':F(R.conf)}</b></tr><tr><td ${td}>الفرق<td ${td}>${R.diff===null?'..........':F(R.diff)}</tr><tr><td ${td}>النتيجة<td ${td}><b>${rcRes(R)}</b></tr>${R.note?`<tr><td ${td}>ملاحظات<td ${td}>${esc(R.note)}</tr>`:''}</table>`
+}
+function rcTbl(R,rows,th,td,first){
+  return `<thead><tr><th ${th}>التاريخ<th ${th}>البيان<th ${th}>مدين<th ${th}>دائن<th ${th}>الرصيد</tr></thead><tbody>${first?`<tr><td ${td} colspan=4>الرصيد السابق<td ${td}><b>${fmt(R.opening)}</b></tr>`:''}${rows.map(x=>`<tr><td ${td}>${x.d}<td ${td}>${esc(x.desc)}<td ${td}>${x.dr?fmt(x.dr):''}<td ${td}>${x.cr?fmt(x.cr):''}<td ${td}>${fmt(x.bal)}</tr>`).join('')}</tbody>`
+}
+const rcSign=R=>`<div style="display:flex;justify-content:space-between;margin-top:34px;font-size:12px">${R.cash?'<span>أمين الصندوق: ..............</span><span>المحاسب: ..............</span><span>المدير: ..............</span>':'<span>ممثل الشركة: ..............</span><span>ممثل الطرف: ..............</span><span>التاريخ: ..............</span>'}</div>`;
+function rcPrint(R){
+  const th='style="border:1px solid #444;padding:3px 5px;text-align:start;background:#eee"',td='style="border:1px solid #444;padding:3px 5px"';
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;font-size:15px;margin:4px 0">${rcTitle(R)}</div><div style="text-align:center;font-size:11px">${rcMeta(R)}</div><hr>
+  ${rcSum(R,td)}<div style="margin:10px 0 4px;font-weight:700;font-size:12px">الحركات${R.from?' · '+esc(R.from):''}</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">${rcTbl(R,R.rows,th,td,true)}</table>${rcSign(R)}`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  $('#rcpt').classList.add('wide');
+  addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
+  print()
+}
+async function rcPdf(R){
+  toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const N=22,ch=[];for(let i=0;i<R.rows.length;i+=N)ch.push(R.rows.slice(i,i+N));if(!ch.length)ch.push([]);
+    const pages=ch.map((c,pi)=>{const last=pi==ch.length-1;
+      return {title:rcTitle(R),sub:rcMeta(R),body:(pi==0?rcSum(R,TD)+`<div style="margin:12px 0 6px;font-weight:700">الحركات${R.from?' · '+esc(R.from):''}</div>`:'')+`<table style="width:100%;border-collapse:collapse">${rcTbl(R,c,TH,TD,pi==0)}</table>`+(last?rcSign(R):''),last}});
+    S.pdfWho='';
+    pdfDialog(await pdfBuild(pages),`reconciliation-${R.asof}.pdf`,`${rcTitle(R)} - ${R.name}`,'')
+  }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+
 /* ---- تاريخ الصلاحية (دفعات) ---- */
 const dleft=iso=>Math.floor((new Date(iso+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);
 const isTrk=p=>!!(p&&p.track_expiry);
