@@ -1579,7 +1579,7 @@ const GUIDE=[
 <li>يظهر الحسم في تفاصيل الفاتورة والطباعة وملف PDF: المجموع قبل الحسم، ثم الحسم، ثم الصافي.</li>
 <li><b>تعديل أو إلغاء</b> الفاتورة يعكس الحسم تلقائياً مع باقي القيد.</li>
 <li>في التقارير: الحسم الممنوح ضمن المصاريف، والحسم المكتسب يظهر كسطر «إيرادات أخرى» ويدخل في صافي الربح.</li>
-<li><b>تنبيه:</b> عند عمل مرتجع لفاتورة عليها حسم تُحسب قيمة المرتجع بسعر البند قبل الحسم. راجع المبلغ والتسوية النقدية قبل الحفظ.</li></ul>`},
+<li><b>المرتجعات:</b> عند إرجاع جزء من فاتورة عليها حسم تُخصم من قيمة المرتجع حصته من الحسم بالتناسب، وتُعكس في حساب الحسم الممنوح أو المكتسب. وإن أُرجعت الفاتورة كلها (ولو على دفعات) يعود الحسم كاملاً. المرتجعات المحفوظة قبل هذا التحديث لا تتغير.</li></ul>`},
 {t:'📥 الشراء',o:1,h:`<ul>
 <li>نفس خطوات البيع، لكن تُدخل <b>سعر التكلفة</b> لكل وحدة، وتختار <b>المورد</b> إذا كان الشراء آجلاً.</li>
 <li>يمكنك الشراء بوحدة أكبر (مثل الطرد) فيتحوّل التكلفة تلقائياً إلى تكلفة الوحدة الأساسية في المخزون.</li>
@@ -1616,6 +1616,7 @@ const GUIDE=[
 {t:'↩️ المرتجعات (للمالك)',o:1,h:`<ul>
 <li>من تفاصيل الفاتورة اضغط <b>مرتجع مبيع</b> أو <b>مرتجع شراء</b>. المرتجع مستند مستقل لا يلغي الفاتورة.</li>
 <li>أدخل الكمية المرتجعة لكل بند. تعود البضاعة إلى المستودع الأصلي، ولا يُسمح بتجاوز الكمية الأصلية أو ما أُرجع سابقاً.</li>
+<li>إن كانت الفاتورة عليها حسم فقيمة المرتجع تُعرض <b>بعد خصم حصته من الحسم</b>، أي الصافي الذي دفعه الزبون فعلاً.</li>
 <li>اكتب المبلغ النقدي المعاد للزبون (أو المستلم من المورد). والباقي يُسوّى على حساب الطرف. وإن كانت الفاتورة بلا طرف فيجب أن يساوي المبلغ كامل قيمة المرتجع.</li>
 <li>قائمة كل المرتجعات من تبويب الفواتير ← <b>مرتجعات البيع والشراء</b>.</li>
 <li>المرتجعات تحتاج إنترنت، ولا يتوفر تعديل أو إلغاء المرتجع بعد حفظه، فراجع الكميات والمبلغ قبل التأكيد.</li>
@@ -2155,8 +2156,9 @@ async function rcPdf(R){
 const AUC={all:null,inv:['sale','sale_void','purchase','purchase_void'],vch:['entry','recon'],stk:['stock'],prd:['product_add','product_price','product_delete','partner_add'],team:['member_add','member_change','member_remove'],sys:['restore_or_reset']};
 const AUCL=[['all','كل العمليات'],['inv','الفواتير'],['vch','السندات والقيود'],['stk','حركات المخزون'],['prd','المواد والزبائن'],['team','المستخدمون'],['sys','الاسترجاع والتصفير']];
 const AUL={sale:'فاتورة بيع',sale_void:'إلغاء فاتورة بيع',purchase:'فاتورة شراء',purchase_void:'إلغاء فاتورة شراء',stock:'حركة مخزون',product_add:'إضافة مادة',product_price:'تعديل أسعار مادة',product_delete:'حذف مادة',partner_add:'إضافة زبون / مورد',member_add:'إضافة مستخدم',member_change:'تعديل صلاحيات مستخدم',member_remove:'إزالة مستخدم',restore_or_reset:'استرجاع نسخة أو تصفير بيانات',recon:'مطابقة حساب'};
-const AUE={receipt:'سند قبض',payment:'سند دفع',voucher:'سند / قيد',void:'إلغاء سند'};
-const auLbl=r=>r.action==='entry'?(AUE[r.ref_type]||'قيد'+(r.ref_type?' ('+r.ref_type+')':'')):r.action==='stock'?'حركة مخزون'+(r.ref_type?' ('+r.ref_type+')':''):(AUL[r.action]||r.action);
+const AUE={receipt:'سند قبض',payment:'سند دفع',voucher:'سند / قيد',expense:'سند مصروف',exchange:'تصريف دولار',opening:'رصيد افتتاحي',equity:'سند حقوق ملكية',void_voucher:'إلغاء سند',void:'إلغاء قيد',sale_return:'مرتجع مبيع',purchase_return:'مرتجع شراء'};
+const AUS={adjust:'تسوية مخزون (جرد)',opening:'مخزون افتتاحي',sale_return:'مرتجع مبيع',purchase_return:'مرتجع شراء'};
+const auLbl=r=>r.action==='entry'?(AUE[r.ref_type]||'قيد'+(r.ref_type?' ('+r.ref_type+')':'')):r.action==='stock'?(AUS[r.ref_type]||'حركة مخزون'+(r.ref_type?' ('+r.ref_type+')':'')):(AUL[r.action]||r.action);
 function auSum(r){
   const d=r.detail||{},cs=d.currency==='USD'?' $':' ل.س',pn=id=>id?((S.parts.find(x=>x.id==id)||{}).name||''):'',pr=id=>id?((S.prods.find(x=>x.id==id)||{}).name||''):'';
   switch(r.action){
@@ -3077,7 +3079,7 @@ async function returnForm(k){return runMutationOnce('returnForm',async()=>{
  const lines=(a.data||[]).map(i=>{const prev=(b.data||[]).filter(r=>r[sale?'sale_item_id':'purchase_item_id']===i.id).reduce((t,r)=>t+Number(r.qty),0);return {...i,unit:Number(i[price]),prev,remaining:Math.max(0,Number(i.qty)-prev)}});
  S.returnDraft={invoice:x,lines};
  $('#v').innerHTML=`<div class=card><h3>${sale?'مرتجع مبيع':'مرتجع شراء'} · ${esc(x.date)}</h3><div class=m>${esc(x.partners?.name||'نقدي')} · ${esc(x.currency)} · سعر الفاتورة ${fmt(x.rate)}</div>
- <p class=m>أدخل الكمية المرتجعة لكل بند. يرحّل المرتجع إلى المستودع الأصلي، ويُمنع تجاوز المرتجع السابق والكمية الأصلية.</p>
+ <p class=m>أدخل الكمية المرتجعة لكل بند. يرحّل المرتجع إلى المستودع الأصلي، ويُمنع تجاوز المرتجع السابق والكمية الأصلية.</p>${+x.discount>0?`<div class=m style="margin-bottom:6px">على هذه الفاتورة حسم ${fmt(x.discount)} ${esc(x.currency)}: تُخصم من قيمة المرتجع حصته من الحسم بالتناسب، وتُعكس في حساب الحسم.</div>`:''}
  ${lines.map((i,j)=>`<div class=it style="display:block"><label for="retq${j}">${esc(i.products?.name||'مادة')} · المتبقي للإرجاع ${fmt(i.remaining)} · السعر ${fmt(i.unit)}</label><input id="retq${j}" type=number min=0 step=any max="${i.remaining}" value=0 ${i.remaining<=0?'disabled':''} inputmode=decimal oninput="returnCalc()"></div>`).join('')}
  <h3 id=returnTotal></h3><label for=returnCash>${sale?'المبلغ النقدي المعاد للزبون':'المبلغ النقدي المستلم من المورد'} (${esc(x.currency)})</label>
  <input id=returnCash type=number min=0 step=0.01 value=0 inputmode=decimal>
@@ -3088,13 +3090,20 @@ async function returnForm(k){return runMutationOnce('returnForm',async()=>{
  returnCalc();
 })}
 function returnValues(){
- const d=S.returnDraft;if(!d)throw Error('افتح نموذج المرتجع أولاً');let total=0;
+ const d=S.returnDraft;if(!d)throw Error('افتح نموذج المرتجع أولاً');let gross=0;
  const round=n=>Math.round((n+Number.EPSILON)*100)/100;
  const items=d.lines.flatMap((i,j)=>{const q=Number($('#retq'+j).value);if(!Number.isFinite(q)||q<0||q>i.remaining+1e-9)throw Error('كمية غير صالحة في أحد البنود');if(!q)return [];
- const orig=round(Number(i.qty)*i.unit);total+=round(orig*(i.prev+q)/Number(i.qty))-round(orig*i.prev/Number(i.qty));return [{item_id:i.id,qty:q}]});
- return {items,total:round(total)};
+  const orig=round(Number(i.qty)*i.unit);gross+=round(orig*(i.prev+q)/Number(i.qty))-round(orig*i.prev/Number(i.qty));return [{item_id:i.id,qty:q}]});
+ gross=round(gross);
+ // حصة المرتجع من حسم الفاتورة (تراكمية على مستوى الفاتورة، كما يحسبها الخادم)
+ const inv=d.invoice,D=Number(inv.discount)||0,gt=Number(inv.total)+D;let disc=0;
+ if(D>0&&gt>0){
+  const prevG=round(d.lines.reduce((s,i)=>s+round(round(Number(i.qty)*i.unit)*i.prev/Number(i.qty)),0));
+  disc=Math.max(0,round(D*Math.min(prevG+gross,gt)/gt)-round(D*Math.min(prevG,gt)/gt));
+ }
+ return {items,total:round(gross-disc),gross,disc};
 }
-function returnCalc(){try{const v=returnValues();$('#returnTotal').textContent='إجمالي المرتجع: '+fmt(v.total)+' '+S.returnDraft.invoice.currency;if(!S.returnDraft.invoice.partner_id)$('#returnCash').value=v.total}catch(e){$('#returnTotal').textContent=e.message}}
+function returnCalc(){try{const v=returnValues(),cu=S.returnDraft.invoice.currency;$('#returnTotal').textContent='إجمالي المرتجع: '+fmt(v.total)+' '+cu+(v.disc>0?' (قبل الحسم '+fmt(v.gross)+' − حصة الحسم '+fmt(v.disc)+')':'');if(!S.returnDraft.invoice.partner_id)$('#returnCash').value=v.total}catch(e){$('#returnTotal').textContent=e.message}}
 async function returnSave(){return runMutationOnce('returnSave',async()=>{
  if(returnPending())return toast('يوجد طلب معلق؛ أعد إرساله من قائمة المرتجعات');
  const d=S.returnDraft,v=returnValues(),cash=Number($('#returnCash').value),date=$('#returnDate').value;
