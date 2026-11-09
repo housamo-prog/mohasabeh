@@ -3103,7 +3103,7 @@ async function returnForm(k){return runMutationOnce('returnForm',async()=>{
 })}
 function returnValues(){
  const d=S.returnDraft;if(!d)throw Error('افتح نموذج المرتجع أولاً');let gross=0;
- const round=n=>Math.round((n+Number.EPSILON)*100)/100;
+ const round=n=>Math.round((n+Number.EPSILON)*10000)/10000;
  const items=d.lines.flatMap((i,j)=>{const q=Number(toEn($('#retq'+j).value));if(!Number.isFinite(q)||q<0||q>i.remaining+1e-9)throw Error('كمية غير صالحة في أحد البنود');if(!q)return [];
   const orig=round(Number(i.qty)*i.unit);gross+=round(orig*(i.prev+q)/Number(i.qty))-round(orig*i.prev/Number(i.qty));return [{item_id:i.id,qty:q}]});
  gross=round(gross);
@@ -3120,7 +3120,7 @@ async function returnSave(){return runMutationOnce('returnSave',async()=>{
  if(returnPending())return toast('يوجد طلب معلق؛ أعد إرساله من قائمة المرتجعات');
  const d=S.returnDraft,v=returnValues(),cash=Number(toEn($('#returnCash').value)),date=$('#returnDate').value;
  if(!v.items.length||v.total<=0)return toast('اختر كمية مرتجعة ذات قيمة أكبر من صفر');
- if(!Number.isFinite(cash)||cash<0||cash>v.total||Math.abs(cash*100-Math.round(cash*100))>1e-6)return toast('أدخل مبلغاً نقدياً صحيحاً ضمن قيمة المرتجع وبحد أقصى منزلتين');
+ if(!Number.isFinite(cash)||cash<0||cash>v.total||Math.abs(cash*10000-Math.round(cash*10000))>1e-6)return toast('أدخل مبلغاً نقدياً صحيحاً ضمن قيمة المرتجع وبحد أقصى أربع منازل');
  if(!date)return toast('حدد تاريخ المرتجع');
  if(!d.invoice.partner_id&&cash!==v.total)return toast('المرتجع بلا طرف يتطلب تسوية نقدية كاملة');
  if(!await ok('تأكيد حفظ المرتجع',{danger:true,yes:'حفظ وترحيل',msg:'القيمة '+fmt(v.total)+' '+d.invoice.currency+'، النقدي '+fmt(cash)+'. ستتغير أرصدة المخزون والحسابات. لا يتوفر إلغاء المرتجع في هذه النسخة.'}))return;
