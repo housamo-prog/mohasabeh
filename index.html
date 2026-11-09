@@ -971,7 +971,9 @@ async function _once_post(){
   if(r===null){
     showDone({t:sale?'تم حفظ فاتورة البيع':'تم حفظ فاتورة الشراء',b:'لا يوجد اتصال بالإنترنت الآن.<br>الفاتورة محفوظة على جهازك وستُرحَّل تلقائياً إلى النظام فور عودة الاتصال.<br><b>عمليات بانتظار الإرسال: '+qGet().length+'</b><br><span class=m style="color:inherit">لا تسجّل الخروج قبل ترحيلها.</span>'},snapObj)
   }else{
-    toast('تم التسجيل ✓');
+    let no=null;try{const g=await db.from(sale?'sales':'purchases').select('invoice_no').eq('id',r).maybeSingle();no=g&&g.data?g.data.invoice_no:null}catch(e){}
+    if(snapObj&&no)snapObj.invoice_no=no;
+    toast('تم التسجيل ✓'+(no?' · رقم '+no:''));
     if(auto)printObj(snapObj)
   }
 }
@@ -1252,7 +1254,7 @@ function invPages(x){
   const dual=x.kind=='sale'&&dualOn(),R=dualR(x),M=a=>dual?dualL(x,a):fmt(a)+' '+cu,cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38||i.note)?10:14,ch=[];
   for(let i=0;i<x.items.length;i+=N)ch.push(x.items.slice(i,i+N));if(!ch.length)ch.push([]);
   return ch.map((c,pi)=>{const last=pi==ch.length-1;
-    const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>المرجع:</b> <span dir=ltr>${String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
+    const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>${x.invoice_no?'رقم الفاتورة':'المرجع'}:</b> <span dir=ltr>${x.invoice_no||String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
     +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية${dual?`<th ${TH}>السعر (ل.س)<th ${TH}>السعر ($)<th ${TH}>الإجمالي (ل.س)<th ${TH}>الإجمالي ($)`:`<th ${TH}>السعر<th ${TH}>الإجمالي`}</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}${dual?`<td ${TD}>${fmt(dualV(x,L.p).s)}<td ${TD}>${fmt(dualV(x,L.p).u)}<td ${TD}>${fmt(dualV(x,L.t).s)}<td ${TD}>${fmt(dualV(x,L.t).u)}`:`<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}`}</tr>`}).join('')}</table>`
     +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
     return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
@@ -1299,7 +1301,7 @@ async function invPdf(k){
     const who=x.partners?.name||'',cu=x.currency=='USD'?'$':'ل.س';
     S.pdfWho=who;
     const txt=`مرحباً${who?' '+who:''}،\nمرفق ${PDFLBL[x.kind]} بتاريخ ${x.date} من ${S.shop.name}.\nالإجمالي: ${fmt(x.total)} ${cu}${x.total-x.paid>0?'\nالمتبقي: '+fmt(x.total-x.paid)+' '+cu:''}`;
-    pdfDialog(await pdfBuild(invPages(x)),`${x.kind}-invoice-${x.date}-${String(x.id).slice(-6)}.pdf`,txt,x.partners?.phone||'')
+    pdfDialog(await pdfBuild(invPages(x)),`${x.kind}-invoice-${x.date}-${(x.invoice_no||String(x.id).slice(-6))}.pdf`,txt,x.partners?.phone||'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
 }
 function stmtAcc(o){
@@ -1813,32 +1815,65 @@ async function _once_rmMember(u){
 }
 
 /* ---- سجل الفواتير ---- */
-async function histV(){
+const HF0=()=>({kind:'all',from:'',to:'',q:'',st:'all',n:40});
+async function histV(){S.hf=HF0();return histLoad()}
+async function histLoad(){
+  const f=S.hf||(S.hf=HF0()),L=f.n;
   $('#v').innerHTML='<div class=m>جارٍ التحميل...</div>';
   if(!navigator.onLine){$('#v').innerHTML=pendHtml()+'<div class="card m">لا يوجد اتصال: تظهر هنا العمليات بانتظار الإرسال فقط. باقي الفواتير تظهر عند عودة الاتصال.</div>';return}
   if(!canAny(['reports','edit_invoices'])){
-    const {data,error}=await db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:40});
+    S.histPriv=false;
+    const {data,error}=await db.rpc('recent_sales',{p_shop:S.shop.id,p_limit:Math.min(L,100)});
     if(error)return toast(error.message);
     S.hist=(data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,partners:{name:x.partner_name}}));
+    S.hmore=(data||[]).length>=Math.min(L,100)&&L<100;
     return histList()
   }
+  S.histPriv=true;
+  const qn=(f.q||'').trim(),isNo=/^\d+$/.test(qn),byName=!!qn&&!isNo;
+  const mk=(tb,dc,items)=>{
+    let q=db.from(tb).select('id,'+dc+',currency,rate,partner_id,total,paid,discount,voided_at,created_at,'+(S.noNo?'':'invoice_no,')+(byName?'partners!inner(name,phone)':'partners(name,phone)')+','+items);
+    if(f.from)q=q.gte(dc,f.from);
+    if(f.to)q=q.lte(dc,f.to);
+    if(f.st=='void')q=q.not('voided_at','is',null);else if(f.st=='open'||f.st=='debt')q=q.is('voided_at',null);
+    if(isNo&&!S.noNo)q=q.eq('invoice_no',+qn);
+    if(byName)q=q.ilike('partners.name','%'+qn.replace(/[%,()*]/g,' ')+'%');
+    return q.order('created_at',{ascending:false}).limit(L)};
   const hq=(x,e)=>Promise.all([
-    db.from('sales').select('id,sale_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),sale_items(product_id,qty,price,'+x+'products(name))').order('created_at',{ascending:false}).limit(40),
-    db.from('purchases').select('id,purchase_date,currency,rate,partner_id,total,paid,discount,voided_at,created_at,partners(name,phone),purchase_items(product_id,qty,unit_cost,'+x+e+'products(name))').order('created_at',{ascending:false}).limit(40)]);
-  let [s,p]=await hq(S.noX?'':'note,unit_name,unit_qty,',(S.noX||S.noE||S.noExp)?'':'expiry_date,');
-  if((s.error||p.error)&&!S.noE&&!S.noX&&!S.noExp){S.noE=true;[s,p]=await hq('note,unit_name,unit_qty,','')}
-  if((s.error||p.error)&&!S.noX){S.noX=true;[s,p]=await hq('','')}
+    f.kind=='purchase'?{data:[]}:mk('sales','sale_date','sale_items(product_id,qty,price,'+x+'products(name))'),
+    f.kind=='sale'?{data:[]}:mk('purchases','purchase_date','purchase_items(product_id,qty,unit_cost,'+x+e+'products(name))')]);
+  const X=S.noX?'':'note,unit_name,unit_qty,',E=(S.noX||S.noE||S.noExp)?'':'expiry_date,';
+  let [s,p]=await hq(X,E);
+  const er=()=>s.error||p.error;
+  if(er()&&!S.noNo&&/invoice_no/.test(er().message||'')){S.noNo=true;[s,p]=await hq(X,E)}
+  if(er()&&!S.noE&&!S.noX&&!S.noExp){S.noE=true;[s,p]=await hq('note,unit_name,unit_qty,','')}
+  if(er()&&!S.noX){S.noX=true;[s,p]=await hq('','')}
+  if(er())return toast(er().message);
+  S.hmore=(s.data||[]).length>=L||(p.data||[]).length>=L;
   S.hist=[...(s.data||[]).map(x=>({...x,kind:'sale',date:x.sale_date,items:x.sale_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.price,note:i.note,un:i.unit_name,uq:i.unit_qty}))})),
     ...(p.data||[]).map(x=>({...x,kind:'purchase',date:x.purchase_date,items:x.purchase_items.map(i=>({id:i.product_id,n:i.products?.name,q:i.qty,p:i.unit_cost,note:i.note,un:i.unit_name,uq:i.unit_qty,exp:i.expiry_date}))}))]
-    .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,50);
+    .sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,L)
+    .filter(x=>f.st!='debt'||+x.paid<+x.total-0.0001);
   histList()
 }
+function histApply(){
+  const f=S.hf||(S.hf=HF0());
+  f.q=$('#hq').value;f.kind=$('#hk').value;f.st=$('#hs').value;f.from=$('#hf').value;f.to=$('#ht').value;f.n=40;
+  histLoad()
+}
+function histClear(){S.hf=HF0();histLoad()}
+function histMore(){S.hf.n+=40;histLoad()}
 function histList(){
-  $('#v').innerHTML=`${pendHtml()}${S.role==='owner'?'<div class=card><button class="b s" onclick="returnsList()">مرتجعات البيع والشراء</button></div>':''}<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير بعد</div>'}</div>`
+  const f=S.hf||HF0(),fl=S.histPriv?`<div class=card><div class=row><input id=hq placeholder="بحث: رقم الفاتورة أو اسم الزبون/المورد" value="${esc(f.q)}" onkeydown="if(event.key=='Enter')histApply()"></div>
+  <div class=row><select id=hk aria-label="النوع"><option value=all ${f.kind=='all'?'selected':''}>بيع وشراء<option value=sale ${f.kind=='sale'?'selected':''}>بيع فقط<option value=purchase ${f.kind=='purchase'?'selected':''}>شراء فقط</select>
+  <select id=hs aria-label="الحالة"><option value=all ${f.st=='all'?'selected':''}>كل الحالات<option value=open ${f.st=='open'?'selected':''}>فعّالة<option value=debt ${f.st=='debt'?'selected':''}>غير مسددة بالكامل<option value=void ${f.st=='void'?'selected':''}>ملغاة</select></div>
+  <div class=row><div><label class=fl for=hf>من تاريخ</label><input id=hf type=date value="${esc(f.from)}"></div><div><label class=fl for=ht>إلى تاريخ</label><input id=ht type=date value="${esc(f.to)}"></div></div>
+  <div class=row><button class=b onclick="histApply()">بحث</button><button class="b s" onclick="histClear()">مسح</button></div></div>`:'';
+  $('#v').innerHTML=`${pendHtml()}${S.role==='owner'?'<div class=card><button class="b s" onclick="returnsList()">مرتجعات البيع والشراء</button></div>':''}${fl}<div class=card>${S.hist.map((x,k)=>`<div class=it onclick="showInv(${k})"><span>${x.kind=='sale'?'بيع':'شراء'}${x.invoice_no?' #'+x.invoice_no:''} · ${x.date}<br><span class=m>${esc(x.partners?.name||'نقدي')}${x.paid<x.total?' · متبقي '+fmt(x.total-x.paid):''}</span></span><b class="${x.voided_at?'neg strike':''}">${fmt(x.total)} ${x.currency}${x.voided_at?' (ملغاة)':''}</b></div>`).join('')||'<div class=m>لا فواتير مطابقة</div>'}${S.hmore?'<button class="b s" style="width:100%;margin-top:8px" onclick="histMore()">تحميل المزيد</button>':''}</div>`
 }
 function showInv(k){
   const x=S.hist[k];
-  $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</b>
+  $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' #'+x.invoice_no:''} · ${x.date}</b>
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>{const L=lineU(i);return `<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(L.q)} ${esc(L.u)} × ${fmt(L.p)}${+i.p===0?' · مجاني 🎁':''}</span>${i.note?`<br><span class=m>📝 ${esc(i.note)}</span>`:''}</span><b>${fmt(L.t)}</b></div>`}).join('')}
   ${+x.discount>0?`<div class=it><span>المجموع قبل الحسم</span><b>${fmt(+x.total+ +x.discount)}</b></div><div class=it><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><b class=neg>-${fmt(x.discount)}</b></div>`:''}<h3>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
@@ -1870,7 +1905,7 @@ const dualS=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س<br>$'+fmt(v.u)};
 const dualL=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س / $'+fmt(v.u)};
 function printObj(x){
   const dual=x.kind=='sale'&&dualOn(),m=a=>dual?dualL(x,a):fmt(a),R=dualR(x);
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' رقم '+x.invoice_no:''} · ${x.date}</div><hr>
   <table>${x.items.map(i=>{const L=lineU(i);return dual?`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×<br>${dualS(x,L.p)}<td>${dualS(x,L.t)}`:`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
   ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
