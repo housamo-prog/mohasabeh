@@ -318,7 +318,7 @@ const BRAND='الوسام للمحاسبة والمستودعات',WA='963933267
 const waLink=()=>'https://wa.me/'+WA+'?text='+encodeURIComponent('مرحباً، أحتاج مساعدة بخصوص '+BRAND);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:3});
+const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:4});
 const uid=()=>crypto.randomUUID();
 let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{},currencies:[],supplierPrices:[],units:{},offers:{},disc:{v:'',pct:false}};
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
@@ -879,10 +879,10 @@ function add(id,n=1){
   S.cart.push({id,name:p.name,qty:n,base,f:1,un:null,price:+(base/rate(S.cur)).toFixed(4)});cartV()
 }
 function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base*(i.f||1)/rate(c)).toFixed(4));cartV()}
-const tot=()=>Math.round(S.cart.reduce((s,i)=>s+Math.round(i.qty*i.price*1000)/1000,0)*1000)/1000;
+const tot=()=>Math.round(S.cart.reduce((s,i)=>s+Math.round(i.qty*i.price*10000)/10000,0)*10000)/10000;
 /* ---- الحسم / الوحدات / العروض ---- */
-function discAmt(){if(S.mode==='open')return 0;const g=tot(),v=+toEn(S.disc.v)||0;if(!(v>0)||!(g>0))return 0;const d=S.disc.pct?Math.round(g*Math.min(v,100)/100*1000)/1000:Math.round(v*1000)/1000;return Math.max(0,Math.min(d,Math.round((g-0.001)*1000)/1000))}
-const net=()=>Math.round((tot()-discAmt())*1000)/1000;
+function discAmt(){if(S.mode==='open')return 0;const g=tot(),v=+toEn(S.disc.v)||0;if(!(v>0)||!(g>0))return 0;const d=S.disc.pct?Math.round(g*Math.min(v,100)/100*10000)/10000:Math.round(v*10000)/10000;return Math.max(0,Math.min(d,Math.round((g-0.0001)*10000)/10000))}
+const net=()=>Math.round((tot()-discAmt())*10000)/10000;
 function dscCh(){S.disc={v:$('#dv').value,pct:$('#dk').value==='pct'};cartV()}
 function dscUpd(){const r=$('#dscr');if(!r)return;const n=S.cart.length;
   if(!n&&(S.disc.v||S.disc.pct)){S.disc={v:'',pct:false};if($('#dv'))$('#dv').value='';if($('#dk'))$('#dk').value='amt'}
@@ -899,7 +899,7 @@ function invLines(){const o=[];S.cart.forEach(i=>{const f=i.f||1,p=S.prods.find(
 function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt},xe=(!sale&&isTrk(p)&&i.exp)?{expiry:i.exp}:{};
   o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex,...xe});
   const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx,...xe})}});return o}
-const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*1000)/1000;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
+const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*10000)/10000;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
 function cn(k,v){const i=S.cart[k];if(i)i.note=String(v||'').slice(0,200)}
 function cnOpen(k){const i=S.cart[k];if(!i)return;i.nt=true;cartV();setTimeout(()=>{const e=$('#cn'+k);if(e)e.focus()},0)}
 function togLineOffer(k){const i=S.cart[k];if(!i)return;i.noOffer=!i.noOffer;cartV()}
@@ -909,7 +909,7 @@ function cq(k,d,v){const i=S.cart[k];if(!i)return;let q=v!==undefined?+toEn(v):+
 function cp(k,v){const i=S.cart[k];if(!i)return;const x=+toEn(v);if(x>=0&&v!==''){i.price=x;i.base=x*rate(S.cur)/(i.f||1)}cartV()}
 async function clrCart(){if(!S.cart.length)return;if(await ok('إفراغ الفاتورة؟',{msg:'ستُحذف كل البنود ('+S.cart.length+') من الفاتورة الحالية.',danger:true,icon:'trash',yes:'إفراغ'})){S.cart=[];cartV()}}
 function chgV(){const r=$('#chgr');if(!r)return;const t=net(),show=S.mode=='sale'&&S.cart.length&&$('#pm')&&$('#pm').value=='cash';r.style.display=show?'':'none';
-  const v=+toEn($('#rcvd').value);$('#chg').innerHTML=!v?'<span class=m>اكتب المبلغ المستلم لحساب الباقي</span>':v<t?`<span class=neg>ناقص ${fmt(Math.round((t-v)*1000)/1000)} ${S.cur}</span>`:`<span>الباقي للزبون</span> <b class=ok>${fmt(Math.round((v-t)*1000)/1000)} ${S.cur}</b>`}
+  const v=+toEn($('#rcvd').value);$('#chg').innerHTML=!v?'<span class=m>اكتب المبلغ المستلم لحساب الباقي</span>':v<t?`<span class=neg>ناقص ${fmt(Math.round((t-v)*10000)/10000)} ${S.cur}</span>`:`<span>الباقي للزبون</span> <b class=ok>${fmt(Math.round((v-t)*10000)/10000)} ${S.cur}</b>`}
 function optSum(){const o=$('#os');if(!o||!$('#pt'))return;const pt=$('#pt'),pm=$('#pm');o.textContent=(pt.value?pt.selectedOptions[0].text:(S.mode=='sale'?'نقدي':'بدون مورد'))+' · '+{cash:'نقداً',credit:'آجل',part:'دفعة جزئية'}[pm.value]+' · '+S.cur;if(pm.value!='cash')$('#opt').open=true}
 function cartV(){
   const el=$('#cart');if(!el)return;
@@ -917,7 +917,7 @@ function cartV(){
   el.innerHTML=n?S.cart.map((i,k)=>{const have=lvl(i.id,S.wh),fr=freeBase(i),over=sale&&!S.edit&&(i.qty*(i.f||1)+fr)>have+1e-9,pr=S.prods.find(x=>x.id==i.id)||{},us=S.units[i.id]||[];
    return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span>${(i.note||i.nt)?`<input class=cnt id=cn${k} maxlength=200 placeholder="ملاحظة على البند" value="${esc(i.note||'')}" oninput="cn(${k},this.value)" aria-label="ملاحظة ${esc(i.name)}">`:`<button class=lnk style="align-self:flex-start" onclick="cnOpen(${k})">+ ملاحظة</button>`}${S.mode==='buy'&&isTrk(pr)?`<label class=m style="display:block">تاريخ الصلاحية <input type=date class=cnt style="width:auto;display:inline-block" value="${esc(i.exp||'')}" onchange="cx(${k},this.value)" aria-label="تاريخ الصلاحية ${esc(i.name)}"></label>`:''}${S.mode==='sale'&&isTrk(pr)?expHint(pr):''}</div>
    <div class=step><button onclick="cq(${k},1)" aria-label="زيادة الكمية">${ic('plus',16)}</button><input inputmode=decimal dir=ltr value="${i.qty}" onchange="cq(${k},0,this.value)" onfocus="this.select()" aria-label="كمية ${esc(i.name)}"><button onclick="cq(${k},-1)" aria-label="${i.qty<=1?'حذف البند':'إنقاص الكمية'}" class="${i.qty<=1?'rm':''}">${ic(i.qty<=1?'trash':'minus',16)}</button></div>
-   <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*1000)/1000)}</b></div>`}).join('')
+   <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*10000)/10000)}</b></div>`}).join('')
    :`<div class=empty>${ic('sale',30)}<div>اضغط على منتج أو امسح الباركود لإضافته</div></div>`;
   const t=net(),pcs=S.cart.reduce((a,i)=>a+(+i.qty||0),0);
   $('#tt').innerHTML=`${fmt(t)} <small>${S.cur}</small>`;$('#cn').textContent=n;$('#chn').textContent=n?(n==1?'بند واحد':n==2?'بندان':n<=10?n+' بنود':n+' بنداً'):'الإجمالي';
