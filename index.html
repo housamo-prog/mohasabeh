@@ -318,7 +318,7 @@ const BRAND='الوسام للمحاسبة والمستودعات',WA='963933267
 const waLink=()=>'https://wa.me/'+WA+'?text='+encodeURIComponent('مرحباً، أحتاج مساعدة بخصوص '+BRAND);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:2});
+const fmt=n=>Number(n||0).toLocaleString('en',{maximumFractionDigits:3});
 const uid=()=>crypto.randomUUID();
 let S={shop:null,prods:[],parts:[],cart:[],cur:'SYP',mode:'sale',tab:'home',wh:localStorage.wh||null,whs:[],lv:{},currencies:[],supplierPrices:[],units:{},offers:{},disc:{v:'',pct:false}};
 const lvl=(p,w)=>S.lv[p+'|'+w]||0;
@@ -808,6 +808,7 @@ function inv(){
   <label class=fl for=pm>طريقة الدفع</label><select id=pm onchange="pmCh()"><option value=cash>نقداً بالكامل<option value=credit>آجل (بدون دفعة)<option value=part>دفعة جزئية والباقي آجل</select>
   <input id=paid type=text inputmode=decimal dir=ltr placeholder="المبلغ المدفوع الآن" style="display:none">
   ${sale&&!S.edit?`<label class=m style="display:flex;gap:6px;align-items:center;margin:8px 0 0"><input type=checkbox id=ap style="width:auto;margin:0" ${localStorage.ap=='1'?'checked':''} onchange="localStorage.ap=this.checked?'1':'0'"> طباعة الوصل بعد البيع</label>`:''}
+  ${sale?`<label class=m style="display:flex;gap:6px;align-items:center;margin:8px 0 0"><input type=checkbox style="width:auto;margin:0" ${localStorage.dual=='1'?'checked':''} onchange="localStorage.dual=this.checked?'1':'0'"> طباعة الفاتورة بعملتين (ليرة + دولار)</label>`:''}
   </details>
   ${!S.fixedWh&&S.whs.length>1?`<div class=whr>${ic('stock',16)}<select id=wh onchange="S.wh=this.value;localStorage.wh=S.wh;srch();cartV()" aria-label="المستودع">${S.whs.map(w=>`<option value=${w.id} ${w.id==S.wh?'selected':''}>${esc(w.name)}`).join('')}</select></div>`:''}
   <div class=chk id=chk><button class=chk-s onclick="$('#cartc').scrollIntoView({behavior:'smooth',block:'start'})" aria-label="عرض السلة"><span class=m id=chn>الإجمالي</span><b id=tt>0</b></button><button class=b id=pbtn onclick="post()">${lbl}</button></div>
@@ -878,10 +879,10 @@ function add(id,n=1){
   S.cart.push({id,name:p.name,qty:n,base,f:1,un:null,price:+(base/rate(S.cur)).toFixed(4)});cartV()
 }
 function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base*(i.f||1)/rate(c)).toFixed(4));cartV()}
-const tot=()=>Math.round(S.cart.reduce((s,i)=>s+Math.round(i.qty*i.price*100)/100,0)*100)/100;
+const tot=()=>Math.round(S.cart.reduce((s,i)=>s+Math.round(i.qty*i.price*1000)/1000,0)*1000)/1000;
 /* ---- الحسم / الوحدات / العروض ---- */
-function discAmt(){if(S.mode==='open')return 0;const g=tot(),v=+toEn(S.disc.v)||0;if(!(v>0)||!(g>0))return 0;const d=S.disc.pct?Math.round(g*Math.min(v,100)/100*100)/100:Math.round(v*100)/100;return Math.max(0,Math.min(d,Math.round((g-0.01)*100)/100))}
-const net=()=>Math.round((tot()-discAmt())*100)/100;
+function discAmt(){if(S.mode==='open')return 0;const g=tot(),v=+toEn(S.disc.v)||0;if(!(v>0)||!(g>0))return 0;const d=S.disc.pct?Math.round(g*Math.min(v,100)/100*1000)/1000:Math.round(v*1000)/1000;return Math.max(0,Math.min(d,Math.round((g-0.001)*1000)/1000))}
+const net=()=>Math.round((tot()-discAmt())*1000)/1000;
 function dscCh(){S.disc={v:$('#dv').value,pct:$('#dk').value==='pct'};cartV()}
 function dscUpd(){const r=$('#dscr');if(!r)return;const n=S.cart.length;
   if(!n&&(S.disc.v||S.disc.pct)){S.disc={v:'',pct:false};if($('#dv'))$('#dv').value='';if($('#dk'))$('#dk').value='amt'}
@@ -898,7 +899,7 @@ function invLines(){const o=[];S.cart.forEach(i=>{const f=i.f||1,p=S.prods.find(
 function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt},xe=(!sale&&isTrk(p)&&i.exp)?{expiry:i.exp}:{};
   o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex,...xe});
   const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx,...xe})}});return o}
-const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*100)/100;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
+const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*1000)/1000;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
 function cn(k,v){const i=S.cart[k];if(i)i.note=String(v||'').slice(0,200)}
 function cnOpen(k){const i=S.cart[k];if(!i)return;i.nt=true;cartV();setTimeout(()=>{const e=$('#cn'+k);if(e)e.focus()},0)}
 function togLineOffer(k){const i=S.cart[k];if(!i)return;i.noOffer=!i.noOffer;cartV()}
@@ -908,7 +909,7 @@ function cq(k,d,v){const i=S.cart[k];if(!i)return;let q=v!==undefined?+toEn(v):+
 function cp(k,v){const i=S.cart[k];if(!i)return;const x=+toEn(v);if(x>=0&&v!==''){i.price=x;i.base=x*rate(S.cur)/(i.f||1)}cartV()}
 async function clrCart(){if(!S.cart.length)return;if(await ok('إفراغ الفاتورة؟',{msg:'ستُحذف كل البنود ('+S.cart.length+') من الفاتورة الحالية.',danger:true,icon:'trash',yes:'إفراغ'})){S.cart=[];cartV()}}
 function chgV(){const r=$('#chgr');if(!r)return;const t=net(),show=S.mode=='sale'&&S.cart.length&&$('#pm')&&$('#pm').value=='cash';r.style.display=show?'':'none';
-  const v=+toEn($('#rcvd').value);$('#chg').innerHTML=!v?'<span class=m>اكتب المبلغ المستلم لحساب الباقي</span>':v<t?`<span class=neg>ناقص ${fmt(Math.round((t-v)*100)/100)} ${S.cur}</span>`:`<span>الباقي للزبون</span> <b class=ok>${fmt(Math.round((v-t)*100)/100)} ${S.cur}</b>`}
+  const v=+toEn($('#rcvd').value);$('#chg').innerHTML=!v?'<span class=m>اكتب المبلغ المستلم لحساب الباقي</span>':v<t?`<span class=neg>ناقص ${fmt(Math.round((t-v)*1000)/1000)} ${S.cur}</span>`:`<span>الباقي للزبون</span> <b class=ok>${fmt(Math.round((v-t)*1000)/1000)} ${S.cur}</b>`}
 function optSum(){const o=$('#os');if(!o||!$('#pt'))return;const pt=$('#pt'),pm=$('#pm');o.textContent=(pt.value?pt.selectedOptions[0].text:(S.mode=='sale'?'نقدي':'بدون مورد'))+' · '+{cash:'نقداً',credit:'آجل',part:'دفعة جزئية'}[pm.value]+' · '+S.cur;if(pm.value!='cash')$('#opt').open=true}
 function cartV(){
   const el=$('#cart');if(!el)return;
@@ -916,7 +917,7 @@ function cartV(){
   el.innerHTML=n?S.cart.map((i,k)=>{const have=lvl(i.id,S.wh),fr=freeBase(i),over=sale&&!S.edit&&(i.qty*(i.f||1)+fr)>have+1e-9,pr=S.prods.find(x=>x.id==i.id)||{},us=S.units[i.id]||[];
    return `<div class="cl${over?' over':''}"><div class=cl-n><b>${esc(i.name)}</b><span class=cl-p><input class=cpr inputmode=decimal dir=ltr value="${i.price}" onchange="cp(${k},this.value)" onfocus="this.select()" aria-label="سعر ${esc(i.name)}"><span class=m>${S.cur}</span>${us.length?`<select class=cun onchange="cu(${k},this.value)" aria-label="وحدة ${esc(i.name)}"><option value="">${esc(pr.unit||'قطعة')}</option>${us.map(u=>`<option value="${u.id}"${i.un==u.id?' selected':''}>${esc(u.name)}</option>`).join('')}</select>`:''}${over?`<span class=neg>المتوفر ${fmt(have)} ${esc(pr.unit||'')}</span>`:''}${(()=>{if(i.locked)return '';const pot=freeBase(i,true);if(fr>0)return `<span style="color:var(--p);font-weight:600">🎁 +${fmt(fr)} ${esc(pr.unit||'قطعة')} مجاناً</span><button class=lnk onclick="togLineOffer(${k})">عدم اعتماد العرض</button>`;if(i.noOffer&&pot>0)return `<span class=m>🎁 العرض غير معتمد (+${fmt(pot)} ${esc(pr.unit||'قطعة')})</span><button class=lnk onclick="togLineOffer(${k})">اعتماد العرض</button>`;return ''})()}</span>${(i.note||i.nt)?`<input class=cnt id=cn${k} maxlength=200 placeholder="ملاحظة على البند" value="${esc(i.note||'')}" oninput="cn(${k},this.value)" aria-label="ملاحظة ${esc(i.name)}">`:`<button class=lnk style="align-self:flex-start" onclick="cnOpen(${k})">+ ملاحظة</button>`}${S.mode==='buy'&&isTrk(pr)?`<label class=m style="display:block">تاريخ الصلاحية <input type=date class=cnt style="width:auto;display:inline-block" value="${esc(i.exp||'')}" onchange="cx(${k},this.value)" aria-label="تاريخ الصلاحية ${esc(i.name)}"></label>`:''}${S.mode==='sale'&&isTrk(pr)?expHint(pr):''}</div>
    <div class=step><button onclick="cq(${k},1)" aria-label="زيادة الكمية">${ic('plus',16)}</button><input inputmode=decimal dir=ltr value="${i.qty}" onchange="cq(${k},0,this.value)" onfocus="this.select()" aria-label="كمية ${esc(i.name)}"><button onclick="cq(${k},-1)" aria-label="${i.qty<=1?'حذف البند':'إنقاص الكمية'}" class="${i.qty<=1?'rm':''}">${ic(i.qty<=1?'trash':'minus',16)}</button></div>
-   <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*100)/100)}</b></div>`}).join('')
+   <b class=cl-t dir=ltr>${fmt(Math.round(i.qty*i.price*1000)/1000)}</b></div>`}).join('')
    :`<div class=empty>${ic('sale',30)}<div>اضغط على منتج أو امسح الباركود لإضافته</div></div>`;
   const t=net(),pcs=S.cart.reduce((a,i)=>a+(+i.qty||0),0);
   $('#tt').innerHTML=`${fmt(t)} <small>${S.cur}</small>`;$('#cn').textContent=n;$('#chn').textContent=n?(n==1?'بند واحد':n==2?'بندان':n<=10?n+' بنود':n+' بنداً'):'الإجمالي';
@@ -962,7 +963,7 @@ async function _once_post(){
   args.p_wh=S.wh;
   const r=await call(sale?'post_sale_wh':'post_purchase_wh',args,true);
   if(r===undefined)return;
-  const snapObj=sale?{kind:'sale',date:today(),currency:S.cur,total:t,paid,discount:discAmt(),items:invLines(),partners:{name:$('#pt').value?$('#pt').selectedOptions[0].text:''}}:null;
+  const snapObj=sale?{kind:'sale',date:today(),currency:S.cur,rate:rate(S.cur),total:t,paid,discount:discAmt(),items:invLines(),partners:{name:$('#pt').value?$('#pt').selectedOptions[0].text:''}}:null;
   const auto=sale&&r&&$('#ap')&&$('#ap').checked;
   S.cart=[];S.disc={v:'',pct:false};
   if(r)await refresh();
@@ -1248,12 +1249,12 @@ async function pdfBuild(pages){
   return pdf.output('blob')
 }
 function invPages(x){
-  const cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38||i.note)?10:14,ch=[];
+  const dual=x.kind=='sale'&&dualOn(),R=dualR(x),M=a=>dual?dualL(x,a):fmt(a)+' '+cu,cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38||i.note)?10:14,ch=[];
   for(let i=0;i<x.items.length;i+=N)ch.push(x.items.slice(i,i+N));if(!ch.length)ch.push([]);
   return ch.map((c,pi)=>{const last=pi==ch.length-1;
     const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>المرجع:</b> <span dir=ltr>${String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
-    +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية<th ${TH}>السعر<th ${TH}>الإجمالي</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}</tr>`}).join('')}</table>`
-    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${fmt(+x.total+ +x.discount)} ${cu}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${fmt(x.discount)} ${cu}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${fmt(x.total)} ${cu}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${fmt(x.paid)} ${cu}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${fmt(x.total-x.paid)} ${cu}</b></div></div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
+    +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية${dual?`<th ${TH}>السعر (ل.س)<th ${TH}>السعر ($)<th ${TH}>الإجمالي (ل.س)<th ${TH}>الإجمالي ($)`:`<th ${TH}>السعر<th ${TH}>الإجمالي`}</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}${dual?`<td ${TD}>${fmt(dualV(x,L.p).s)}<td ${TD}>${fmt(dualV(x,L.p).u)}<td ${TD}>${fmt(dualV(x,L.t).s)}<td ${TD}>${fmt(dualV(x,L.t).u)}`:`<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}`}</tr>`}).join('')}</table>`
+    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
     return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
 }
 function stmtPages(o,f,t,rows,det){
@@ -1841,6 +1842,7 @@ function showInv(k){
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>{const L=lineU(i);return `<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(L.q)} ${esc(L.u)} × ${fmt(L.p)}${+i.p===0?' · مجاني 🎁':''}</span>${i.note?`<br><span class=m>📝 ${esc(i.note)}</span>`:''}</span><b>${fmt(L.t)}</b></div>`}).join('')}
   ${+x.discount>0?`<div class=it><span>المجموع قبل الحسم</span><b>${fmt(+x.total+ +x.discount)}</b></div><div class=it><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><b class=neg>-${fmt(x.discount)}</b></div>`:''}<h3>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
+  ${x.kind=='sale'?`<label class=m style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type=checkbox style="width:auto;margin:0" ${localStorage.dual=='1'?'checked':''} onchange="localStorage.dual=this.checked?'1':'0'"> الطباعة وPDF بعملتين (ليرة + دولار)</label>`:''}
   <div class=row style="margin-top:10px"><button class=b onclick="printInv(${k})">طباعة</button><button class="b s" onclick="invPdf(${k})">📄 PDF / واتساب</button>${x.voided_at||!can('edit_invoices')?'':`<button class="b s" onclick="editInv(${k})">تعديل</button>`}${x.voided_at||!can('edit_invoices')?'':`<button class="b s neg" onclick="voidInv(${k})">إلغاء الفاتورة</button>`}${!x.voided_at&&S.role==='owner'?`<button class="b s" onclick="returnForm(${k})">${x.kind==='sale'?'مرتجع مبيع':'مرتجع شراء'}</button>`:''}<button class="b s" onclick="histV()">رجوع</button></div></div>`
 }
 function editInv(k){
@@ -1861,10 +1863,16 @@ async function _once_voidInv(k){
   await refresh();toast('تم إلغاء الفاتورة ✓');histV()
 }
 function printInv(k){printObj(S.hist[k])}
+const dualOn=()=>localStorage.dual=='1';
+function dualR(x){const ru=(x.currency=='USD'?+x.rate:0)||rate('USD')||1,rs=x.currency=='SYP'?1:(+x.rate||rate(x.currency)||1);return {rs,ru}}
+function dualV(x,a){const R=dualR(x),s=(+a||0)*R.rs;return {s,u:s/R.ru}}
+const dualS=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س<br>$'+fmt(v.u)};
+const dualL=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س / $'+fmt(v.u)};
 function printObj(x){
+  const dual=x.kind=='sale'&&dualOn(),m=a=>dual?dualL(x,a):fmt(a),R=dualR(x);
   $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'} · ${x.date}</div><hr>
-  <table>${x.items.map(i=>{const L=lineU(i);return `<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
-  ${+x.discount>0?`المجموع قبل الحسم: ${fmt(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${fmt(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</b><br>المدفوع: ${fmt(x.paid)}<br>المتبقي: ${fmt(x.total-x.paid)}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
+  <table>${x.items.map(i=>{const L=lineU(i);return dual?`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×<br>${dualS(x,L.p)}<td>${dualS(x,L.t)}`:`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
+  ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
