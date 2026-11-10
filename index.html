@@ -935,6 +935,16 @@ async function _once_post(){
   let paid=pm=='cash'?t:pm=='credit'?0:(+toEn($('#paid').value)||0);
   if(pm=='part'&&!(paid>0&&paid<t))return toast('أدخل مبلغاً أكبر من صفر وأقل من إجمالي الفاتورة ('+fmt(t)+')');
   if(pm!='cash'&&!$('#pt').value){$('#pt').style.borderColor='var(--r)';return toast(sale?'البيع الآجل يحتاج اختيار الزبون، أو أضفه بزر ＋':'الشراء الآجل يحتاج اختيار المورد، أو أضفه بزر ＋')}
+  if(sale&&pm!='cash'&&!S.edit&&$('#pt').value){
+    const cp=S.parts.find(x=>x.id==$('#pt').value);
+    if(cp&&cp.blocked)return toast('حساب «'+cp.name+'» موقوف: لا يمكن البيع الآجل له');
+    const lim=+(cp&&cp.credit_limit)||0;
+    if(lim>0){
+      const unpaid=Math.max(0,t-paid)*rate(S.cur);let cur=+((S.balc||{})[cp.id]||{}).r||0;
+      try{const {data}=await db.from('partner_balances').select('receivable').eq('id',cp.id).maybeSingle();if(data)cur=+data.receivable||0}catch(e){}
+      if(cur+unpaid>lim+0.005&&!await ok('تجاوز سقف الدين',{msg:'سقف «'+cp.name+'» '+fmt(lim)+' ل.س، وبعد هذه الفاتورة يصبح دينه '+fmt(cur+unpaid)+' ل.س. هل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return
+    }
+  }
   if(!sale){
     const miss=S.cart.find(i=>isTrk(S.prods.find(x=>x.id==i.id))&&!i.exp);
     if(miss)return toast('أدخل تاريخ الصلاحية للمادة «'+miss.name+'»');
@@ -987,6 +997,7 @@ function stockV(){
   <button class="b s" style="width:100%;margin-top:6px" onclick="addWh()">+ مستودع جديد</button>
   ${S.whs.length>1&&S.prods.length?`<hr><b>تحويل بضاعة بين مستودعين</b><div class=row><select id=tf>${o}</select><select id=tt>${o}</select></div>
   <select id=tp>${po}</select><input id=tq type=number inputmode=decimal placeholder="الكمية"><button class=b style="width:100%" onclick="doTransfer()">تحويل</button>`:''}</div>
+  <div class=card><b>تنبيهات المخزون</b><div class=m>الأصناف الناقصة عن الحد الأدنى والأصناف الراكدة</div><button class="b s" style="width:100%;margin-top:6px" onclick="lowV()">نواقص المخزون وأصناف راكدة</button></div>
   <div class=card><b>تهيئة محل قائم</b><div class=m>إذا كان عندك بضاعة موجودة من قبل، سجّلها كرصيد افتتاحي (لا يؤثر على الصندوق) في المستودع المحدد.</div>
   <button class=b style="width:100%;margin-top:6px" onclick="go('open')">تسجيل مخزون افتتاحي</button></div>
   <div class=card><b>جرد وتسوية الكميات</b><div class=m>اضغط على المنتج وأدخل الكمية الفعلية الموجودة في المستودع المحدد</div>
@@ -1033,7 +1044,7 @@ async function partnerV(id){
   (S.balc=S.balc||{})[id]={r,pa,usd:cb?+cb.rec_usd||0:0};
   const cl=cb&&(+cb.rec_usd||+cb.pay_usd)?`<div class=m>منها بالدولار: ${+cb.rec_usd?'لنا $'+fmt(cb.rec_usd)+' ':''}${+cb.pay_usd?'علينا $'+fmt(cb.pay_usd):''}</div>`:'';
   $('#v').innerHTML=`<div class=card><b>${esc(p.name)}</b> <span class=m>${KL(p.kind)}</span>${p.phone?`<div class=m dir=ltr style="text-align:right">${esc(p.phone)}</div>`:''}
-  ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}${cl}
+  ${c?`<h3 class="${r>0?'neg':''}">لنا عليه: ${fmt(r)}</h3>`:''}${sp?`<h3 class="${pa>0?'neg':''}">له علينا: ${fmt(pa)}</h3>`:''}${cl}${p.blocked?'<div class="m neg">🚫 الحساب موقوف: لا يمكن البيع الآجل</div>':''}${+p.credit_limit>0?`<div class="m ${r>+p.credit_limit?'neg':''}">سقف الدين: ${fmt(p.credit_limit)} ل.س${r>+p.credit_limit?' (تجاوز السقف)':''}</div>`:''}
   ${c&&r>0?`<button class="b wa" style="width:100%;margin:8px 0" onclick="remind('${id}')">${ic('wa',18)} تذكير عبر واتساب</button><div class="m rl" data-rl="${id}" style="text-align:center;margin:-4px 0 8px">${rlTxt(id)}</div>`:''}
   <div class=row>${c?`<button class=b onclick="rcvGo('${id}','receipt')">سند قبض</button>`:''}${sp?`<button class=b onclick="rcvGo('${id}','payment')">سند دفع</button>`:''}</div>
   <div class=row style="margin-top:8px">${sp?`<button class="b s" onclick="supplierPricesV('${id}')">أسعار الشراء</button>`:''}${tabOk('recon')?`<button class="b s" onclick="reconGo('partner','${id}')">مطابقة الحساب</button>`:''}<button class="b s" onclick="openBal('${id}')">رصيد افتتاحي</button>${p.kind=='both'?`<button class="b s" onclick="offsetP('${id}',${Math.max(0,Math.min(r,pa))})">مقاصة</button>`:''}<button class="b s" onclick="editPartner('${id}')">تعديل</button></div>
@@ -1085,12 +1096,14 @@ async function _once_offsetP(id,max){
 async function editPartner(...args){return runMutationOnce('editPartner',()=>_once_editPartner(...args))}
 async function _once_editPartner(id){
   const p=S.parts.find(x=>x.id==id);
-  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:p.account_currency||'SYP',opts:curDlgOptions()}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
+  const f=await dlg({title:'تعديل بيانات الطرف',icon:'users',yes:'حفظ',fields:[{k:'n',label:'الاسم',val:p.name},{k:'ph',label:'الهاتف',val:p.phone||'',tel:true},{k:'k',label:'النوع',val:{customer:1,supplier:2,both:3}[p.kind],opts:[['1','زبون'],['2','مورد'],['3','زبون ومورد معاً']]},{k:'tier',label:'فئة سعر البيع الافتراضية',val:p.price_tier||'retail',opts:[['retail','المفرق'],['semi_wholesale','نصف الجملة'],['wholesale','الجملة']]},{k:'currency',label:'عملة الحساب الافتراضية',val:p.account_currency||'SYP',opts:curDlgOptions()},{k:'lim',label:'سقف الدين بالليرة (اتركه فارغاً بلا سقف)',val:p.credit_limit||'',num:true},{k:'blk',label:'حالة الحساب',val:p.blocked?'1':'0',opts:[['0','فعّال'],['1','موقوف (منع البيع الآجل)']]}],check:v=>v.n.trim()?'':'الاسم مطلوب'});if(!f)return;
   const n=f.n,ph=f.ph||'',k=f.k;
   if(!k||!['1','2','3'].includes(k.trim()))return;
   const kind={1:'customer',2:'supplier',3:'both'}[k.trim()];
   const {error}=await db.from('partners').update({name:n.trim(),phone:ph.trim()||null,kind,price_tier:f.tier,account_currency:f.currency||'SYP'}).eq('id',id);
   if(error)return toast(error.message);
+  const lim=+toEn(f.lim||'')||0,blk=f.blk=='1';
+  if(lim!==(+p.credit_limit||0)||blk!==!!p.blocked){const e2=(await db.from('partners').update({credit_limit:lim>0?lim:null,blocked:blk}).eq('id',id)).error;if(e2)toast('لم يُحفظ السقف/الإيقاف: '+e2.message+' (شغّل ملف SQL الجديد)')}
   await refresh();toast('تم الحفظ ✓');partnerV(id)
 }
 
@@ -2731,7 +2744,7 @@ async function debtV(){
   <div class=m>عرض الأرصدة</div>${dvSelHtml('ddc',dvMode(),'dvSet')}
   <div class=sbar>${ic('search',18)}<input id=dq type=search placeholder="ابحث بالاسم أو الهاتف" oninput="debtList()" autocomplete=off aria-label="بحث"></div>
   <div class=chips>${[['all','الكل ('+D.length+')'],['rc','عليهم ديون ('+rc.length+')'],['py','لهم علينا ('+py.length+')']].map(([k,l])=>`<button class="fc${S.dF==k?' on':''}" onclick="S.dF='${k}';document.querySelectorAll('.fc').forEach(b=>b.classList.toggle('on',b==this));debtList()">${l}</button>`).join('')}</div>
-  <button class="b s" style="width:100%;margin:6px 0" onclick="debtRepV()">كشف الديون للطباعة (لنا / علينا)</button>
+  <div class=row style="margin:6px 0"><button class="b s" onclick="debtRepV()">كشف الديون (طباعة)</button><button class="b s" onclick="agingV()">أعمار الديون</button></div>
   ${rc.length?`<div class=row style="margin:4px 0 2px"><button class="b wa" onclick="remindAll()">${ic('wa',18)} تذكير المدينين</button>${S.role=='owner'?`<button class="b s" style="flex:0;white-space:nowrap" onclick="watEdit()">نص الرسالة</button>`:''}</div>`:''}
   <div id=dl></div>
   <div class=m id=dnote style="margin-top:8px">${dvNote()}</div></div>
@@ -2746,7 +2759,7 @@ function debtList(){
   el.innerHTML=L.map(p=>{const r=+p.receivable,pa=+p.payable,pp=S.parts.find(x=>x.id==p.id)||{};
    const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه ${dvS(p,'rc')}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا ${dvS(p,'py')}</b>`:`<b>لنا ${dvS(p,'rc')}<br>علينا ${dvS(p,'py')}</b>`;
    const rl=rlTxt(p.id);
-   return `<div class="it cl" onclick="partnerV('${p.id}')"><span class=dn><span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}${pp.phone?' · <span dir=ltr>'+esc(pp.phone)+'</span>':''}</span>${r>0?`<br><span class="m rl${rl?' sent':''}" data-rl="${p.id}">${rl}</span>`:''}</span></span><span class=dr><span style="text-align:end">${amt}</span>${r>0?waBtn(p.id):''}</span></div>`}).join('')||'<div class=empty>لا نتائج</div>'
+   return `<div class="it cl" onclick="partnerV('${p.id}')"><span class=dn><span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span><span>${esc(p.name)}${pp.blocked?' 🚫':(+pp.credit_limit>0&&r>+pp.credit_limit?' ⚠️':'')}<br><span class=m>${KL(p.kind)}${pp.phone?' · <span dir=ltr>'+esc(pp.phone)+'</span>':''}</span>${r>0?`<br><span class="m rl${rl?' sent':''}" data-rl="${p.id}">${rl}</span>`:''}</span></span><span class=dr><span style="text-align:end">${amt}</span>${r>0?waBtn(p.id):''}</span></div>`}).join('')||'<div class=empty>لا نتائج</div>'
 }
 /* ---- عرض الديون: بعملة الدين الأصلية أو بعملة واحدة ---- */
 const curSym=c=>c=='SYP'?'ل.س':c=='USD'?'$':c;
@@ -2858,6 +2871,147 @@ async function debtRepPdf(){
     pdfDialog(await pdfBuild(pages),`debts-${today()}.pdf`,`${debtRepTitle(k)} من ${S.shop.name} بتاريخ ${today()}`,'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
 }
+/* ====== أدوات مشتركة للتقارير ====== */
+const tbH=(cols,th)=>`<tr>${cols.map(c=>`<th ${th}>${c}`).join('')}</tr>`;
+const tbR=(cells,td)=>`<tr>${cells.map(c=>`<td ${td}>${c}`).join('')}</tr>`;
+const THP='style="border-bottom:2px solid #000;padding:4px 6px;text-align:start"',TDP='style="border-bottom:1px solid #aaa;padding:4px 6px"';
+const pctS=(p,r)=>r>0?fmt(rd2(p/r*100))+'%':'—';
+const rxMiss=m=>/function|schema cache|does not exist|Could not find/i.test(m||'');
+const tblHtml=(cols,rows,tot,th,td)=>`<table style="width:100%;border-collapse:collapse">${tbH(cols,th)}${rows.map(c=>tbR(c,td)).join('')}${tot?tbR(tot.map(x=>'<b>'+x+'</b>'),td):''}</table>`;
+function repPrint(title,sub,html){
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;margin-top:6px">${title}</div><div style="text-align:center">${sub}</div><hr>${html}`;
+  $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
+  $('#rcpt').classList.add('wide');
+  addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
+  print()
+}
+async function repPdf(title,sub,cols,rows,tot,name){
+  toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const N=22,ch=[];for(let i=0;i<rows.length;i+=N)ch.push(rows.slice(i,i+N));
+    const pages=ch.map((c,pi)=>({title,sub,body:`<table style="width:100%;border-collapse:collapse">${tbH(cols,TH)}${c.map(r=>tbR(r,TD)).join('')}${pi==ch.length-1&&tot?tbR(tot.map(x=>'<b>'+x+'</b>'),TD):''}</table>`,last:pi==ch.length-1}));
+    S.pdfWho='';
+    pdfDialog(await pdfBuild(pages),name,title+' من '+S.shop.name+' بتاريخ '+today(),'')
+  }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
+}
+
+/* ====== أعمار الديون ====== */
+async function agingV(){S.ag=S.ag||{side:'rc',cur:'SYP'};$('#v').innerHTML=`<div class=card>${skl(4)}</div>`;await agLoad()}
+async function agLoad(){
+  const {data,error}=await db.rpc('debt_aging',{p_shop:S.shop.id,p_side:S.ag.side});
+  if(error){debtV();return toast(rxMiss(error.message)?'شغّل ملف SQL الجديد (أعمار الديون) أولاً':error.message)}
+  S.agD=data||[];agShow()
+}
+function agData(){
+  const R=S.ag.cur=='SYP'?1:(rate(S.ag.cur)||1),cv=v=>rd2((+v||0)/R);
+  const E=(S.agD||[]).map(x=>{const a=cv(x.b0),b=cv(x.b31),c=cv(x.b61),d=cv(x.b91);return {id:x.partner_id,n:x.name,a,b,c,d,t:rd2(a+b+c+d)}}).filter(x=>x.t>0).sort((x,y)=>y.t-x.t);
+  const sm=k=>rd2(E.reduce((s,e)=>s+e[k],0));
+  return {E,T:{a:sm('a'),b:sm('b'),c:sm('c'),d:sm('d'),t:sm('t')},R}
+}
+const agCols=['الاسم','المجموع','0-30 يوم','31-60','61-90','أكثر من 90'];
+const agRows=E=>E.map(e=>[esc(e.n),fmt(e.t),fmt(e.a),fmt(e.b),fmt(e.c),fmt(e.d)]);
+const agTitle=()=>S.ag.side=='rc'?'أعمار الديون المستحقة لنا':'أعمار الديون المستحقة علينا';
+const agSub=D=>today()+' · المبالغ بـ '+esc(curSym(S.ag.cur))+(S.ag.cur!='SYP'?' · سعر الصرف 1 '+esc(curSym(S.ag.cur))+' = '+fmt(D.R)+' ل.س':'');
+function agShow(){
+  const a=S.ag,D=agData(),T=D.T;
+  $('#v').innerHTML=`<div class=card><b>أعمار الديون</b>
+  <div class=chips style="margin-top:6px">${[['rc','لنا (عند الزبائن)'],['py','علينا (للموردين)']].map(([k,l])=>`<button class="fc${a.side==k?' on':''}" onclick="S.ag.side='${k}';agingV()">${l}</button>`).join('')}</div>
+  <div class=m style="margin-top:8px">عرض المبالغ بعملة</div><select onchange="S.ag.cur=this.value;agShow()">${curOptions(a.cur)}</select>
+  <div class=row style="margin-top:8px"><button class=b onclick="agPrint()">طباعة</button><button class="b s" onclick="agPdf()">ملف PDF</button></div>
+  <div class=m style="margin-top:6px">العمر من تاريخ كل فاتورة غير مسددة، والتسديدات تُخصم من الأقدم أولاً. اضغط على الاسم للتفاصيل.</div></div>
+  <div class=card style="overflow-x:auto">${D.E.length?`<div class=m style="margin-bottom:6px">${agSub(D)}</div><table style="width:100%;border-collapse:collapse">${tbH(agCols,TH)}${D.E.map(e=>`<tr onclick="partnerV('${e.id}')" style="cursor:pointer"><td ${TD}>${esc(e.n)}<td ${TD}><b>${fmt(e.t)}</b><td ${TD}>${fmt(e.a)}<td ${TD}>${fmt(e.b)}<td ${TD}>${fmt(e.c)}<td ${TD} class="${e.d>0?'neg':''}">${fmt(e.d)}</tr>`).join('')}${tbR(['<b>المجموع</b>','<b>'+fmt(T.t)+'</b>','<b>'+fmt(T.a)+'</b>','<b>'+fmt(T.b)+'</b>','<b>'+fmt(T.c)+'</b>','<b>'+fmt(T.d)+'</b>'],TD)}</table>
+  <div class=m style="margin-top:8px">منها أكثر من 90 يوماً: <b class=neg>${fmt(T.d)} ${esc(curSym(a.cur))}</b> (${pctS(T.d,T.t)})</div>`:'<div class=empty>لا توجد ديون</div>'}</div>
+  <button class="b s" style="width:100%" onclick="debtV()">رجوع</button>`
+}
+function agTot(D){return ['المجموع',fmt(D.T.t),fmt(D.T.a),fmt(D.T.b),fmt(D.T.c),fmt(D.T.d)]}
+function agPrint(){const D=agData();if(!D.E.length)return toast('لا توجد ديون لعرضها');repPrint(agTitle(),agSub(D),tblHtml(agCols,agRows(D.E),agTot(D),THP,TDP))}
+function agPdf(){const D=agData();if(!D.E.length)return toast('لا توجد ديون لعرضها');return repPdf(agTitle(),agSub(D),agCols,agRows(D.E),agTot(D),'aging-'+today()+'.pdf')}
+
+/* ====== نواقص المخزون والأصناف الراكدة ====== */
+function lowV(){S.lw=S.lw||{tab:'low',days:60};lwShow()}
+const lwNeed=p=>{const m=+p.min_stock||0,st=+p.stock_qty||0;return m>0?Math.max(0,rd2(m-st)):0};
+function lwShow(){
+  const w=S.lw;
+  $('#v').innerHTML=`<div class=card><b>تنبيهات المخزون</b>
+  <div class=chips style="margin-top:6px">${[['low','نواقص المخزون'],['slow','أصناف راكدة']].map(([k,l])=>`<button class="fc${w.tab==k?' on':''}" onclick="S.lw.tab='${k}';lwShow()">${l}</button>`).join('')}</div>
+  ${w.tab=='slow'?`<div class=chips style="margin-top:8px">${[30,60,90,180].map(d=>`<button class="fc${w.days==d?' on':''}" onclick="S.lw.days=${d};lwShow()">${d} يوماً</button>`).join('')}</div><div class=m style="margin-top:6px">أصناف لها مخزون ولم تُبَع منذ ${w.days} يوماً أو أكثر (أو لم تُبَع أبداً).</div>`:'<div class=m style="margin-top:6px">أصناف نزلت عن الحد الأدنى أو نفد مخزونها. حدّد الحد الأدنى من تعديل المنتج.</div>'}
+  <div class=row style="margin-top:8px"><button class=b onclick="lwPrint()">طباعة</button>${w.tab=='low'?'<button class="b wa" onclick="lwShare()">مشاركة واتساب</button>':''}</div></div>
+  <div class=card id=lwb style="overflow-x:auto">${skl(3)}</div>
+  <button class="b s" style="width:100%" onclick="stockV()">رجوع</button>`;
+  lwLoad()
+}
+async function lwLoad(){
+  const w=S.lw;
+  if(w.tab=='low'){
+    const L=lowList();
+    S.lwB={title:'نواقص المخزون',sub:today(),cols:['الصنف','المخزون','الحد الأدنى','المطلوب'],rows:L.map(p=>[esc(p.name),fmt(p.stock_qty)+' '+esc(p.unit||''),+p.min_stock>0?fmt(p.min_stock):'—',lwNeed(p)>0?fmt(lwNeed(p)):(+p.stock_qty<=0?'نفد':'—')]),tot:null,
+      text:'نواقص '+S.shop.name+' · '+today()+'\n'+L.map(p=>'- '+p.name+': '+(lwNeed(p)>0?'المطلوب '+fmt(lwNeed(p))+' '+(p.unit||''):'نفد المخزون')).join('\n')};
+  }else{
+    const {data,error}=await db.rpc('slow_items',{p_shop:S.shop.id,p_days:w.days});
+    if(error){$('#lwb').innerHTML='';return toast(rxMiss(error.message)?'شغّل ملف SQL الجديد (الأصناف الراكدة) أولاً':error.message)}
+    const D=data||[],tv=rd2(D.reduce((s,x)=>s+(+x.value_base||0),0));
+    S.lwB={title:'أصناف راكدة ('+w.days+' يوماً)',sub:today()+' · القيمة بالليرة بسعر التكلفة',cols:['الصنف','المخزون','آخر بيع','قيمة المخزون'],
+      rows:D.map(x=>[esc(x.name),fmt(x.stock_qty)+' '+esc(x.unit||''),x.last_sale?x.last_sale+' (منذ '+x.days_since+' يوماً)':'لم يُبَع',fmt(x.value_base)]),tot:D.length?['المجموع ('+D.length+')','','',fmt(tv)]:null,text:''};
+  }
+  const B=S.lwB;
+  $('#lwb').innerHTML=B.rows.length?tblHtml(B.cols,B.rows,B.tot,TH,TD):'<div class=empty>'+(w.tab=='low'?'لا توجد نواقص':'لا توجد أصناف راكدة')+'</div>'
+}
+function lwPrint(){const B=S.lwB;if(!B||!B.rows.length)return toast('لا توجد بيانات للطباعة');repPrint(B.title,B.sub,tblHtml(B.cols,B.rows,B.tot,THP,TDP))}
+function lwShare(){const B=S.lwB;if(!B||!B.rows.length)return toast('لا توجد نواقص');window.open('https://wa.me/?text='+encodeURIComponent(B.text),'_blank')}
+
+/* ====== تقارير الأرباح وكارت الصنف ====== */
+const pfDef=()=>({tab:'item',from:ld(new Date(Date.now()-29*864e5)),to:today(),sort:'profit',pid:''});
+function profitV(){S.pf=S.pf||pfDef();pfShow()}
+function pfRange(n){S.pf.to=today();S.pf.from=n<0?today().slice(0,8)+'01':ld(new Date(Date.now()-n*864e5));pfShow()}
+function pfCardOf(id){S.pf.tab='card';S.pf.pid=id;pfShow()}
+const pfLbl={sale:'بيع',purchase:'شراء',void_sale:'إلغاء بيع',void_purchase:'إلغاء شراء',sale_return:'مرتجع بيع',purchase_return:'مرتجع شراء',opening_balance:'رصيد سابق',opening:'رصيد افتتاحي',adjust:'تسوية جرد',stock_adjust:'تسوية جرد',transfer:'تحويل بين مستودعات',production:'تصنيع',void_production:'إلغاء تصنيع'};
+function pfShow(){
+  const f=S.pf;
+  $('#v').innerHTML=`<div class=card><b>تقارير الأرباح والمبيعات</b>
+  <div class=chips style="margin-top:6px">${[['item','حسب الصنف'],['partner','حسب الزبون'],['card','كارت الصنف']].map(([k,l])=>`<button class="fc${f.tab==k?' on':''}" onclick="S.pf.tab='${k}';pfShow()">${l}</button>`).join('')}</div>
+  <div class=row style="margin:8px 0 4px"><button class="b s" onclick="pfRange(0)">اليوم</button><button class="b s" onclick="pfRange(6)">7 أيام</button><button class="b s" onclick="pfRange(29)">30 يوماً</button><button class="b s" onclick="pfRange(-1)">هذا الشهر</button></div>
+  <div class=row><div><label class=fl for=pff>من</label><input id=pff type=date value="${f.from}"></div><div><label class=fl for=pft>إلى</label><input id=pft type=date value="${f.to}"></div></div>
+  ${f.tab=='card'?`<select id=pfp style="margin-top:6px" onchange="S.pf.pid=this.value"><option value="">اختر الصنف</option>${S.prods.map(p=>`<option value=${p.id} ${p.id==f.pid?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`:`<div class=chips style="margin-top:8px">${[['profit','الأكثر ربحاً'],['rev','الأكثر مبيعاً (قيمة)']].concat(f.tab=='item'?[['qty','الأكثر كمية']]:[]).map(([k,l])=>`<button class="fc${f.sort==k?' on':''}" onclick="S.pf.sort='${k}';pfRender()">${l}</button>`).join('')}</div>`}
+  <button class=b style="width:100%;margin-top:8px" onclick="pfGo()">عرض</button>
+  <div class=row style="margin-top:6px"><button class="b s" onclick="pfPrint()">طباعة</button><button class="b s" onclick="pfPdf()">ملف PDF</button></div></div>
+  <div class=card id=pfb style="overflow-x:auto"><div class=m>اختر الفترة ثم اضغط عرض</div></div>
+  <button class="b s" style="width:100%" onclick="repV()">رجوع</button>`;
+  if(f.tab!='card'||f.pid)pfGo()
+}
+async function pfGo(){
+  const f=S.pf,b=$('#pfb');
+  f.from=($('#pff')||{}).value||f.from;f.to=($('#pft')||{}).value||f.to;
+  if(f.from>f.to)return toast('تاريخ البداية بعد تاريخ النهاية');
+  if(f.tab=='card'&&!f.pid){b.innerHTML='<div class=m>اختر الصنف ثم اضغط عرض</div>';return}
+  b.innerHTML=skl(3);
+  const r=f.tab=='card'?await db.rpc('item_card',{p_shop:S.shop.id,p_product:f.pid,p_from:f.from,p_to:f.to}):await db.rpc(f.tab=='item'?'profit_by_item':'profit_by_partner',{p_shop:S.shop.id,p_from:f.from,p_to:f.to});
+  if(r.error){b.innerHTML='';return toast(rxMiss(r.error.message)?'شغّل ملف SQL الجديد (تقارير الأرباح) أولاً':r.error.message)}
+  S.pfD=r.data||[];S.pfDt=f.tab;pfRender()
+}
+function pfBuild(){
+  const f=S.pf,D=S.pfD||[];if(S.pfDt!=f.tab)return null;
+  const sub=f.from+' ← '+f.to+' · بالليرة السورية';
+  if(f.tab=='card'){
+    const pn=(S.prods.find(p=>p.id==f.pid)||{}).name||'';let inn=0,out=0;
+    const rows=D.map(x=>{const q=+x.qty||0;if(x.ref_type!='opening_balance'){if(q>0)inn+=q;else out-=q}return [x.entry_date,esc(pfLbl[x.ref_type]||x.ref_type||''),x.ref_no?('#'+esc(x.ref_no)):'',x.ref_type=='opening_balance'?'':(q>0?'+':'')+fmt(q),fmt(x.balance)]});
+    return {title:'كارت الصنف: '+esc(pn),sub:f.from+' ← '+f.to,cols:['التاريخ','الحركة','المستند','الكمية','الرصيد'],rows,tot:['المجموع','وارد '+fmt(rd2(inn)),'صادر '+fmt(rd2(out)),'','']}
+  }
+  const E=D.map(x=>({id:f.tab=='item'?x.product_id:x.partner_id,n:x.name||'نقدي',u:x.unit||'',q:+x.qty||0,rev:+x.revenue||0,cost:+x.cost||0,p:+x.profit||0}));
+  const k=f.sort=='rev'?'rev':f.sort=='qty'&&f.tab=='item'?'q':'p';
+  E.sort((a,b)=>b[k]-a[k]);
+  const T={q:rd2(E.reduce((s,e)=>s+e.q,0)),rev:rd2(E.reduce((s,e)=>s+e.rev,0)),cost:rd2(E.reduce((s,e)=>s+e.cost,0)),p:rd2(E.reduce((s,e)=>s+e.p,0))};
+  if(f.tab=='item')return {E,title:'ربح الأصناف',sub,cols:['الصنف','الكمية','المبيعات','التكلفة','الربح','الهامش'],rows:E.map(e=>[esc(e.n),fmt(e.q)+' '+esc(e.u),fmt(e.rev),fmt(e.cost),fmt(e.p),pctS(e.p,e.rev)]),tot:['المجموع','',fmt(T.rev),fmt(T.cost),fmt(T.p),pctS(T.p,T.rev)]};
+  return {E,title:'ربح الزبائن',sub,cols:['الزبون','المبيعات','التكلفة','الربح','الهامش'],rows:E.map(e=>[esc(e.n),fmt(e.rev),fmt(e.cost),fmt(e.p),pctS(e.p,e.rev)]),tot:['المجموع',fmt(T.rev),fmt(T.cost),fmt(T.p),pctS(T.p,T.rev)]}
+}
+function pfRender(){
+  const b=$('#pfb');if(!b)return;const B=pfBuild();if(!B){b.innerHTML='<div class=m>اضغط عرض</div>';return}
+  if(!B.rows.length){b.innerHTML='<div class=empty>لا توجد بيانات في هذه الفترة</div>';return}
+  const f=S.pf;
+  b.innerHTML=`<div class=m style="margin-bottom:6px">${B.sub}</div><table style="width:100%;border-collapse:collapse">${tbH(B.cols,TH)}${B.rows.map((c,i)=>{const e=B.E&&B.E[i],oc=e&&e.id?(f.tab=='item'?`onclick="pfCardOf('${e.id}')"`:`onclick="partnerV('${e.id}')"`):'';return `<tr ${oc} ${oc?'style="cursor:pointer"':''}>${c.map((x,j)=>`<td ${TD}${e&&j==(f.tab=='item'?4:3)&&e.p<0?' class=neg':''}>${x}`).join('')}</tr>`}).join('')}${tbR(B.tot.map(x=>'<b>'+x+'</b>'),TD)}</table>${f.tab=='item'?'<div class=m style="margin-top:6px">اضغط على صنف لعرض كارت حركته.</div>':''}`
+}
+function pfPrint(){const B=pfBuild();if(!B||!B.rows.length)return toast('اعرض التقرير أولاً');repPrint(B.title,B.sub,tblHtml(B.cols,B.rows,B.tot,THP,TDP))}
+function pfPdf(){const B=pfBuild();if(!B||!B.rows.length)return toast('اعرض التقرير أولاً');return repPdf(B.title,B.sub,B.cols,B.rows,B.tot,'report-'+today()+'.pdf')}
+
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -2885,7 +3039,8 @@ async function repV(){
   const cashRows=(cs&&cs.data&&cs.data.length)?cs.data.map(c=>[c.name,c.sys_code=='1011'?'$'+fmt(c.usd)+' ('+fmt(c.base)+' ل.س)':+c.base]):[['الصندوق',g('1010')]];
   const R=[...cashRows,['ذمم الزبائن (لنا)',g('1100')],['قيمة المخزون',g('1200')],['ذمم الموردين (علينا)',-g('2100')],['إجمالي المبيعات',-g('4100')],['صافي الربح',profit]];
   $('#v').innerHTML=`<div class=card id=per></div><div class=card>${R.map(([n,v])=>`<div class=it><span>${n}</span><b class="${v<0?'neg':''}">${typeof v=='string'?v:fmt(v)}</b></div>`).join('')}<div class=m>الأرقام بالليرة، وصندوق الدولار بالدولار وما يعادله.</div></div>
-  <div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
+  <div class=card><button class="b s" style="width:100%" onclick="profitV()">تقارير الأرباح والمبيعات وكارت الصنف</button></div>
+<div class=card><b>ربح آخر الأيام</b>${(dp.data||[]).map(x=>`<div class=it><span>${x.entry_date}</span><b>${fmt(x.profit)}</b></div>`).join('')||'<div class=m>لا بيانات</div>'}</div>
   <div class=card><b>بضاعة قاربت على الانتهاء</b>${(ls.data||[]).map(x=>`<div class=it><span>${esc(x.name)}</span><b class=neg>${fmt(x.stock_qty)}</b></div>`).join('')||'<div class=m>لا شيء</div>'}</div>
   <div class=card><b>ميزان المراجعة</b><table><tr><th>الحساب<th>مدين<th>دائن${T.map(x=>`<tr><td>${esc(x.name)}<td>${fmt(x.debit)}<td>${fmt(x.credit)}`).join('')}</table></div>`;
   loadPeriod(0)
