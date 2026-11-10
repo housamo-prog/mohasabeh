@@ -2723,17 +2723,18 @@ async function debtV(){
   const [{data,error},cb]=await Promise.all([db.from('partner_balances').select('*').order('name'),db.from('partner_cur_balances').select('*').then(r=>r.data||[],()=>[]),rlLoad(true)]);
   if(S.tab!==t0)return;
   if(error&&!data){$('#v').innerHTML=`<div class="card empty">تعذّر تحميل الديون. ${navigator.onLine?esc(error.message):'لا يوجد اتصال بالإنترنت.'}</div>`;return}
-  S.debtD=data||[];S.balc={};S.debtD.forEach(p=>S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:0});(cb||[]).forEach(c=>{if(S.balc[c.partner_id])S.balc[c.partner_id].usd=+c.rec_usd||0});
+  S.debtD=data||[];S.balc={};S.debtD.forEach(p=>S.balc[p.id]={r:+p.receivable||0,pa:+p.payable||0,usd:0});S.dCB={};(cb||[]).forEach(c=>{S.dCB[c.partner_id]=c;if(S.balc[c.partner_id])S.balc[c.partner_id].usd=+c.rec_usd||0});
   const D=S.debtD,rc=D.filter(p=>+p.receivable>0),py=D.filter(p=>+p.payable>0);
   S.dF=S.dF||'all';
-  $('#v').innerHTML=`<div class="bal2 dtop"><div><span class=m>لنا عند الزبائن (${rc.length})</span><b>${fmt(rc.reduce((a,p)=>a+(+p.receivable),0))}</b></div><div><span class=m>علينا للموردين (${py.length})</span><b class="${py.length?'neg':''}">${fmt(py.reduce((a,p)=>a+(+p.payable),0))}</b></div></div>
+  $('#v').innerHTML=`<div class="bal2 dtop"><div><span class=m>لنا عند الزبائن (${rc.length})</span><b id=dtr>${dvTotStr(rc,'rc')}</b></div><div><span class=m>علينا للموردين (${py.length})</span><b id=dtp class="${py.length?'neg':''}">${dvTotStr(py,'py')}</b></div></div>
   <div class=card>
+  <div class=m>عرض الأرصدة</div>${dvSelHtml('ddc',dvMode(),'dvSet')}
   <div class=sbar>${ic('search',18)}<input id=dq type=search placeholder="ابحث بالاسم أو الهاتف" oninput="debtList()" autocomplete=off aria-label="بحث"></div>
   <div class=chips>${[['all','الكل ('+D.length+')'],['rc','عليهم ديون ('+rc.length+')'],['py','لهم علينا ('+py.length+')']].map(([k,l])=>`<button class="fc${S.dF==k?' on':''}" onclick="S.dF='${k}';document.querySelectorAll('.fc').forEach(b=>b.classList.toggle('on',b==this));debtList()">${l}</button>`).join('')}</div>
   <button class="b s" style="width:100%;margin:6px 0" onclick="debtRepV()">كشف الديون للطباعة (لنا / علينا)</button>
   ${rc.length?`<div class=row style="margin:4px 0 2px"><button class="b wa" onclick="remindAll()">${ic('wa',18)} تذكير المدينين</button>${S.role=='owner'?`<button class="b s" style="flex:0;white-space:nowrap" onclick="watEdit()">نص الرسالة</button>`:''}</div>`:''}
   <div id=dl></div>
-  <div class=m style="margin-top:8px">الأرصدة بالليرة. اضغط على الاسم للتفاصيل وكشف الحساب.</div></div>
+  <div class=m id=dnote style="margin-top:8px">${dvNote()}</div></div>
   <details class=card id=npd><summary>${ic('plus',16)} زبون / مورد جديد</summary><input id=an placeholder="الاسم"><input id=ap placeholder="الهاتف" type=tel dir=ltr>
   <select id=ak><option value=customer>زبون<option value=supplier>مورد<option value=both>زبون ومورد معاً</select><label class=fl>فئة سعر البيع الافتراضية للزبون</label><select id=atier><option value=retail>المفرق<option value=semi_wholesale>نصف الجملة<option value=wholesale>الجملة</select><label class=fl>عملة الحساب الافتراضية</label><select id=acur>${curOptions('SYP')}</select><button class=b style="width:100%" onclick="addPart()">حفظ</button></details>`;
   debtList()
@@ -2743,75 +2744,116 @@ function debtList(){
   const L=(S.debtD||[]).filter(p=>(S.dF=='rc'?+p.receivable>0:S.dF=='py'?+p.payable>0:true)).filter(p=>{if(!q)return true;const pp=S.parts.find(x=>x.id==p.id)||{};return nAr(p.name).includes(q)||(pp.phone||'').includes(q)});
   if(S.dF=='rc')L.sort((a,b)=>b.receivable-a.receivable);if(S.dF=='py')L.sort((a,b)=>b.payable-a.payable);
   el.innerHTML=L.map(p=>{const r=+p.receivable,pa=+p.payable,pp=S.parts.find(x=>x.id==p.id)||{};
-   const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه ${fmt(r)}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا ${fmt(pa)}</b>`:`<b>لنا ${fmt(r)}<br>علينا ${fmt(pa)}</b>`;
+   const amt=p.kind=='customer'?`<b class="${r>0?'neg':''}">عليه ${dvS(p,'rc')}</b>`:p.kind=='supplier'?`<b class="${pa>0?'neg':''}">علينا ${dvS(p,'py')}</b>`:`<b>لنا ${dvS(p,'rc')}<br>علينا ${dvS(p,'py')}</b>`;
    const rl=rlTxt(p.id);
    return `<div class="it cl" onclick="partnerV('${p.id}')"><span class=dn><span class=av style="--h:${hue(p.name)}">${esc([...p.name.trim()][0]||'؟')}</span><span>${esc(p.name)}<br><span class=m>${KL(p.kind)}${pp.phone?' · <span dir=ltr>'+esc(pp.phone)+'</span>':''}</span>${r>0?`<br><span class="m rl${rl?' sent':''}" data-rl="${p.id}">${rl}</span>`:''}</span></span><span class=dr><span style="text-align:end">${amt}</span>${r>0?waBtn(p.id):''}</span></div>`}).join('')||'<div class=empty>لا نتائج</div>'
 }
-/* ---- كشف الديون القابل للطباعة ---- */
+/* ---- عرض الديون: بعملة الدين الأصلية أو بعملة واحدة ---- */
 const curSym=c=>c=='SYP'?'ل.س':c=='USD'?'$':c;
+const dvMode=()=>S.dv||(S.dv=(()=>{try{return localStorage.dview}catch(e){return ''}})()||'SYP');
+const dvRateOf=m=>m=='orig'||m=='SYP'?1:(rate(m)||1);
+const rd2=v=>Math.round(v*100)/100;
+function dvParts(p,side,m,R){
+  const base=+(side=='rc'?p.receivable:p.payable)||0;
+  if(m=='orig'){
+    const r=(S.dCB||{})[p.id];
+    if(r){const a=side=='rc'?[['SYP',+r.rec_syp||0],['USD',+r.rec_usd||0]]:[['SYP',+r.pay_syp||0],['USD',+r.pay_usd||0]];
+      const ps=a.filter(x=>Math.abs(x[1])>=0.005).map(x=>({c:x[0],a:rd2(x[1])}));
+      if(ps.length)return ps}
+    return [{c:'SYP',a:rd2(base)}]
+  }
+  return [{c:m,a:rd2(base/(R||1))}]
+}
+const dvF=x=>fmt(x.a)+' '+curSym(x.c);
+const dvStr=ps=>ps.length?ps.map(dvF).join(' + '):'0';
+function dvSum(arr){const m={};arr.forEach(ps=>ps.forEach(x=>m[x.c]=(m[x.c]||0)+x.a));return Object.keys(m).sort((a,b)=>a=='SYP'?-1:b=='SYP'?1:a.localeCompare(b)).map(c=>({c,a:rd2(m[c])})).filter(x=>Math.abs(x.a)>=0.005)}
+const dvS=(p,side)=>{const b=+(side=='rc'?p.receivable:p.payable)||0,m=dvMode();return b>0?dvStr(dvParts(p,side,m,dvRateOf(m))):fmt(b)};
+const dvTotStr=(list,side)=>{const m=dvMode(),R=dvRateOf(m);return dvStr(dvSum(list.map(p=>dvParts(p,side,m,R))))};
+const dvNote=()=>{const m=dvMode();return (m=='orig'?'المبالغ بعملة الدين الأصلية (ليرة / دولار) لكل زبون.':m=='SYP'?'الأرصدة بالليرة.':'المبالغ محوَّلة إلى '+curSym(m)+' بسعر الصرف الحالي ('+fmt(rate(m))+' ل.س).')+' اضغط على الاسم للتفاصيل وكشف الحساب.'};
+const dvSelHtml=(id,m,fn)=>`<select id=${id} onchange="${fn}(this.value)"><option value=orig ${m=='orig'?'selected':''}>حسب عملة الدين الأصلية (كل زبون بعملته)</option>${curOptions(m)}</select>`;
+function dvSet(v){
+  S.dv=v;try{localStorage.dview=v}catch(e){}
+  const D=S.debtD||[],rc=D.filter(p=>+p.receivable>0),py=D.filter(p=>+p.payable>0);
+  if($('#dtr'))$('#dtr').textContent=dvTotStr(rc,'rc');
+  if($('#dtp'))$('#dtp').textContent=dvTotStr(py,'py');
+  if($('#dnote'))$('#dnote').textContent=dvNote();
+  debtList()
+}
+
+/* ---- كشف الديون القابل للطباعة ---- */
 async function debtRepV(){
   S.dr=S.dr||{kind:'all',cur:'SYP',rate:'1'};
+  S.dr.cur=dvMode();S.dr.rate=S.dr.cur=='orig'||S.dr.cur=='SYP'?'1':String(rate(S.dr.cur));
   $('#v').innerHTML=`<div class=card>${skl(4)}</div>`;
-  const {data,error}=await db.from('partner_balances').select('*').order('name');
-  if(error)return toast(error.message);
-  S.drD=data||[];debtRepShow()
+  const [a,b]=await Promise.all([db.from('partner_balances').select('*').order('name'),db.from('partner_cur_balances').select('*').then(r=>r,()=>({data:[]}))]);
+  if(a.error)return toast(a.error.message);
+  S.drD=a.data||[];S.dCB={};((b&&b.data)||[]).forEach(c=>S.dCB[c.partner_id]=c);
+  debtRepShow()
 }
-function debtRepCur(c){S.dr.cur=c;S.dr.rate=c=='SYP'?'1':String(rate(c));debtRepShow()}
+function debtRepCur(c){S.dr.cur=c;S.dr.rate=c=='SYP'||c=='orig'?'1':String(rate(c));debtRepShow()}
 function debtRepShow(){
   const d=S.dr;
   $('#v').innerHTML=`<div class=card><b>كشف الديون</b>
   <div class=chips style="margin-top:6px">${[['rc','لنا (عند الزبائن)'],['py','علينا (للموردين)'],['all','الاثنان معاً']].map(([k,l])=>`<button class="fc${d.kind==k?' on':''}" onclick="S.dr.kind='${k}';debtRepShow()">${l}</button>`).join('')}</div>
-  <div class=m style="margin-top:8px">عرض المبالغ بعملة</div><select id=drc onchange="debtRepCur(this.value)">${curOptions(d.cur)}</select>
-  ${d.cur!='SYP'?`<div class=m>سعر الصرف (ليرة لكل 1 ${esc(curSym(d.cur))})</div><input id=drr dir=ltr inputmode=decimal value="${esc(d.rate)}" oninput="S.dr.rate=this.value;debtRepPreview()">`:''}
+  <div class=m style="margin-top:8px">عرض المبالغ</div>${dvSelHtml('drc',d.cur,'debtRepCur')}
+  ${d.cur!='SYP'&&d.cur!='orig'?`<div class=m>سعر الصرف (ليرة لكل 1 ${esc(curSym(d.cur))})</div><input id=drr dir=ltr inputmode=decimal value="${esc(d.rate)}" oninput="S.dr.rate=this.value;debtRepPreview()">`:''}
   <div class=row style="margin-top:8px"><button class=b onclick="debtRepPrint()">طباعة</button><button class="b s" onclick="debtRepPdf()">ملف PDF</button></div>
-  <div class=m style="margin-top:6px">الأرصدة محفوظة بالليرة وتُحوَّل للعملة المختارة بسعر الصرف أعلاه. الترتيب من الأكبر إلى الأصغر.</div></div>
+  <div class=m style="margin-top:6px">${d.cur=='orig'?'كل زبون بعملة دينه (ليرة و/أو دولار) والمجاميع لكل عملة على حدة.':'الأرصدة محفوظة بالليرة وتُحوَّل للعملة المختارة بسعر الصرف أعلاه.'} الترتيب من الأكبر إلى الأصغر.</div></div>
   <div class=card id=drp style="overflow-x:auto"></div>
   <button class="b s" style="width:100%" onclick="debtV()">رجوع</button>`;
   debtRepPreview()
 }
-function debtRepRate(){const c=S.dr.cur;if(c=='SYP')return 1;const r=+toEn(S.dr.rate);return r>0?r:(rate(c)||1)}
+function debtRepRate(){const c=S.dr.cur;if(c=='SYP'||c=='orig')return 1;const r=+toEn(S.dr.rate);return r>0?r:(rate(c)||1)}
 function debtRepData(){
-  const d=S.dr,R=debtRepRate(),cv=v=>Math.round(v/R*100)/100,E=[],r2=v=>Math.round(v*100)/100;
+  const d=S.dr,R=debtRepRate(),E=[];
   (S.drD||[]).forEach(p=>{
-    if(d.kind!='py'&&+p.receivable>0){const a=cv(+p.receivable);if(a>0)E.push({n:p.name,side:'rc',a})}
-    if(d.kind!='rc'&&+p.payable>0){const a=cv(+p.payable);if(a>0)E.push({n:p.name,side:'py',a})}
+    ['rc','py'].forEach(side=>{
+      if((d.kind=='rc'&&side=='py')||(d.kind=='py'&&side=='rc'))return;
+      const base=+(side=='rc'?p.receivable:p.payable)||0;if(!(base>0))return;
+      const ps=dvParts(p,side,d.cur,R);
+      if(d.cur!='orig'&&!(ps[0].a>0))return;
+      E.push({n:p.name,side,parts:ps,key:base})
+    })
   });
-  E.sort((x,y)=>y.a-x.a||String(x.n).localeCompare(String(y.n),'ar'));
-  const rc=r2(E.filter(e=>e.side=='rc').reduce((s,e)=>s+e.a,0)),py=r2(E.filter(e=>e.side=='py').reduce((s,e)=>s+e.a,0));
-  return {E,rc,py,net:r2(rc-py),R,nrc:E.filter(e=>e.side=='rc').length,npy:E.filter(e=>e.side=='py').length}
+  E.sort((x,y)=>y.key-x.key||String(x.n).localeCompare(String(y.n),'ar'));
+  const rcE=E.filter(e=>e.side=='rc'),pyE=E.filter(e=>e.side=='py');
+  const rc=dvSum(rcE.map(e=>e.parts)),py=dvSum(pyE.map(e=>e.parts));
+  const net=dvSum([rc,py.map(x=>({c:x.c,a:-x.a}))]);
+  return {E,rc,py,net,R,nrc:rcE.length,npy:pyE.length}
 }
 const debtRepTitle=k=>k=='rc'?'كشف الديون المستحقة لنا':k=='py'?'كشف الديون المستحقة علينا':'كشف الديون (لنا وعلينا)';
-const debtRepSub=(D,cu)=>today()+(S.dr.cur!='SYP'?' · المبالغ بـ '+esc(cu)+' · سعر الصرف 1 '+esc(cu)+' = '+fmt(D.R)+' ل.س':' · المبالغ بالليرة السورية');
+const debtRepSub=(D)=>today()+(S.dr.cur=='orig'?' · المبالغ بعملة الدين الأصلية':S.dr.cur!='SYP'?' · المبالغ بـ '+esc(curSym(S.dr.cur))+' · سعر الصرف 1 '+esc(curSym(S.dr.cur))+' = '+fmt(D.R)+' ل.س':' · المبالغ بالليرة السورية');
 function debtRepHead(k,th){return k=='all'?`<tr><th ${th}>#<th ${th}>الاسم<th ${th}>لنا<th ${th}>علينا</tr>`:`<tr><th ${th}>#<th ${th}>الاسم<th ${th}>${k=='rc'?'المبلغ (لنا)':'المبلغ (علينا)'}</tr>`}
-function debtRepRowsH(rows,from,k,cu,td){return rows.map((e,i)=>`<tr><td ${td}>${from+i+1}<td ${td}>${esc(e.n)}${k=='all'?`<td ${td}>${e.side=='rc'?fmt(e.a)+' '+esc(cu):''}<td ${td}>${e.side=='py'?fmt(e.a)+' '+esc(cu):''}`:`<td ${td}>${fmt(e.a)} ${esc(cu)}`}</tr>`).join('')}
-function debtRepTot(D,k,cu){
-  const r=(l,v,b)=>`<div style="display:flex;justify-content:space-between;${b?'font-weight:700;border-top:1px solid #999;margin-top:4px;padding-top:4px':''}"><span>${l}</span><span>${v}</span></div>`,c=esc(cu);
-  const inner=k=='rc'?r('المجموع ('+D.nrc+')',fmt(D.rc)+' '+c,1):k=='py'?r('المجموع ('+D.npy+')',fmt(D.py)+' '+c,1)
-    :r('مجموع ما لنا ('+D.nrc+')',fmt(D.rc)+' '+c)+r('مجموع ما علينا ('+D.npy+')',fmt(D.py)+' '+c)+r('الصافي (لنا − علينا)',fmt(Math.abs(D.net))+' '+c+(D.net>0?' لنا':D.net<0?' علينا':''),1);
-  return `<div style="margin-top:12px;font-size:14px;width:62%;margin-inline-start:auto">${inner}</div>`
+function debtRepRowsH(rows,from,k,td){return rows.map((e,i)=>`<tr><td ${td}>${from+i+1}<td ${td}>${esc(e.n)}${k=='all'?`<td ${td}>${e.side=='rc'?dvStr(e.parts):''}<td ${td}>${e.side=='py'?dvStr(e.parts):''}`:`<td ${td}>${dvStr(e.parts)}`}</tr>`).join('')}
+function debtRepTot(D,k){
+  const r=(l,v,b)=>`<div style="display:flex;justify-content:space-between;gap:10px;${b?'font-weight:700;border-top:1px solid #999;margin-top:4px;padding-top:4px':''}"><span>${l}</span><span>${v}</span></div>`;
+  const netS=D.net.length?D.net.map(x=>fmt(Math.abs(x.a))+' '+curSym(x.c)+(x.a>0?' لنا':' علينا')).join(' ، '):'0';
+  const inner=k=='rc'?r('المجموع ('+D.nrc+')',dvStr(D.rc),1):k=='py'?r('المجموع ('+D.npy+')',dvStr(D.py),1)
+    :r('مجموع ما لنا ('+D.nrc+')',dvStr(D.rc))+r('مجموع ما علينا ('+D.npy+')',dvStr(D.py))+r('الصافي (لنا − علينا)',netS,1);
+  return `<div style="margin-top:12px;font-size:14px;width:66%;margin-inline-start:auto">${inner}</div>`
 }
 function debtRepPreview(){
   const el=$('#drp');if(!el)return;
-  const D=debtRepData(),k=S.dr.kind,cu=curSym(S.dr.cur);
-  el.innerHTML=D.E.length?`<div class=m style="margin-bottom:6px">${debtRepSub(D,cu)}</div><table style="width:100%;border-collapse:collapse">${debtRepHead(k,TH)}${debtRepRowsH(D.E,0,k,cu,TD)}</table>${debtRepTot(D,k,cu)}`:'<div class=empty>لا توجد ديون</div>'
+  const D=debtRepData(),k=S.dr.kind;
+  el.innerHTML=D.E.length?`<div class=m style="margin-bottom:6px">${debtRepSub(D)}</div><table style="width:100%;border-collapse:collapse">${debtRepHead(k,TH)}${debtRepRowsH(D.E,0,k,TD)}</table>${debtRepTot(D,k)}`:'<div class=empty>لا توجد ديون</div>'
 }
 function debtRepPrint(){
-  const D=debtRepData(),k=S.dr.kind,cu=curSym(S.dr.cur);
+  const D=debtRepData(),k=S.dr.kind;
   if(!D.E.length)return toast('لا توجد ديون لعرضها');
   const th='style="border-bottom:2px solid #000;padding:4px 6px;text-align:start"',td='style="border-bottom:1px solid #aaa;padding:4px 6px"';
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;margin-top:6px">${debtRepTitle(k)}</div><div style="text-align:center">${debtRepSub(D,cu)}</div><hr><table style="width:100%;border-collapse:collapse">${debtRepHead(k,th)}${debtRepRowsH(D.E,0,k,cu,td)}</table>${debtRepTot(D,k,cu)}`;
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-weight:700;margin-top:6px">${debtRepTitle(k)}</div><div style="text-align:center">${debtRepSub(D)}</div><hr><table style="width:100%;border-collapse:collapse">${debtRepHead(k,th)}${debtRepRowsH(D.E,0,k,td)}</table>${debtRepTot(D,k)}`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   $('#rcpt').classList.add('wide');
   addEventListener('afterprint',()=>$('#rcpt').classList.remove('wide'),{once:true});
   print()
 }
 async function debtRepPdf(){
-  const D=debtRepData(),k=S.dr.kind,cu=curSym(S.dr.cur);
+  const D=debtRepData(),k=S.dr.kind;
   if(!D.E.length)return toast('لا توجد ديون لعرضها');
   toast('جارٍ تجهيز ملف PDF...');
   try{
     const N=22,ch=[];for(let i=0;i<D.E.length;i+=N)ch.push(D.E.slice(i,i+N));
-    const pages=ch.map((c,pi)=>({title:debtRepTitle(k),sub:debtRepSub(D,cu),body:`<table style="width:100%;border-collapse:collapse">${debtRepHead(k,TH)}${debtRepRowsH(c,pi*N,k,cu,TD)}</table>`+(pi==ch.length-1?debtRepTot(D,k,cu):''),last:pi==ch.length-1}));
+    const pages=ch.map((c,pi)=>({title:debtRepTitle(k),sub:debtRepSub(D),body:`<table style="width:100%;border-collapse:collapse">${debtRepHead(k,TH)}${debtRepRowsH(c,pi*N,k,TD)}</table>`+(pi==ch.length-1?debtRepTot(D,k):''),last:pi==ch.length-1}));
     S.pdfWho='';
     pdfDialog(await pdfBuild(pages),`debts-${today()}.pdf`,`${debtRepTitle(k)} من ${S.shop.name} بتاريخ ${today()}`,'')
   }catch(e){toast('تعذّر تجهيز الملف: '+(e.message||e))}
