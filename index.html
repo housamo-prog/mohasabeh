@@ -1254,9 +1254,9 @@ function invPages(x){
   const dual=x.kind=='sale'&&dualOn(),R=dualR(x),M=a=>dual?dualL(x,a):fmt(a)+' '+cu,cu=x.currency=='USD'?'$':'ل.س',N=x.items.some(i=>String(i.n).length>38||i.note)?10:14,ch=[];
   for(let i=0;i<x.items.length;i+=N)ch.push(x.items.slice(i,i+N));if(!ch.length)ch.push([]);
   return ch.map((c,pi)=>{const last=pi==ch.length-1;
-    const body=(pi==0?`<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>${x.invoice_no?'رقم الفاتورة':'المرجع'}:</b> <span dir=ltr>${x.invoice_no||String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
+    const body=(pi==0?`${x.kind=='sale'?waQrHtml(70):''}<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>${x.invoice_no?'رقم الفاتورة':'المرجع'}:</b> <span dir=ltr>${x.invoice_no||String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
     +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية${dual?`<th ${TH}>السعر (ل.س)<th ${TH}>السعر ($)<th ${TH}>الإجمالي (ل.س)<th ${TH}>الإجمالي ($)`:`<th ${TH}>السعر<th ${TH}>الإجمالي`}</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}${dual?`<td ${TD}>${fmt(dualV(x,L.p).s)}<td ${TD}>${fmt(dualV(x,L.p).u)}<td ${TD}>${fmt(dualV(x,L.t).s)}<td ${TD}>${fmt(dualV(x,L.t).u)}`:`<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}`}</tr>`}).join('')}</table>`
-    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
+    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div><div style="margin-top:10px;font-size:13px">${invCnt(x)}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
     return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
 }
 function stmtPages(o,f,t,rows,det){
@@ -1905,9 +1905,9 @@ const dualS=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س<br>$'+fmt(v.u)};
 const dualL=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س / $'+fmt(v.u)};
 function printObj(x){
   const dual=x.kind=='sale'&&dualOn(),m=a=>dual?dualL(x,a):fmt(a),R=dualR(x);
-  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' رقم '+x.invoice_no:''} · ${x.date}</div><hr>
+  $('#rcpt').innerHTML=`${coHdr()}${x.kind=='sale'?waQrHtml(80):''}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' رقم '+x.invoice_no:''} · ${x.date}</div><hr>
   <table>${x.items.map(i=>{const L=lineU(i);return dual?`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×<br>${dualS(x,L.p)}<td>${dualS(x,L.t)}`:`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
-  ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}${x.voided_at?'<br><b>(ملغاة)</b>':''}`;
+  ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}${x.voided_at?'<br><b>(ملغاة)</b>':''}<hr><div style="font-size:11px">${invCnt(x)}</div>`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
@@ -2892,6 +2892,83 @@ function scanInv(){
   },'امسح المنتجات تباعاً، واضغط إغلاق عند الانتهاء')
 }
 /* ---- بيانات الشركة ---- */
+/* مولّد QR مدمج (بايت، تصحيح M، إصدارات 1-10) بدون مكتبات خارجية */
+function qrMatrix(text){
+  const data=Array.from(new TextEncoder().encode(String(text)));
+  const ECC=[0,10,16,26,18,24,16,18,22,22,26],BLK=[0,1,1,1,2,2,4,4,4,5,5];
+  const rawBits=v=>{let r=(16*v+128)*v+64;if(v>=2){const a=Math.floor(v/7)+2;r-=(25*a-10)*a-55;if(v>=7)r-=36}return r};
+  let ver=1,cap;
+  for(;;ver++){
+    if(ver>10)throw new Error('qr too long');
+    cap=Math.floor(rawBits(ver)/8)-ECC[ver]*BLK[ver];
+    if(4+(ver<10?8:16)+data.length*8<=cap*8)break;
+  }
+  const bits=[];const put=(v,n)=>{for(let i=n-1;i>=0;i--)bits.push((v>>>i)&1)};
+  put(4,4);put(data.length,ver<10?8:16);data.forEach(b=>put(b,8));
+  put(0,Math.min(4,cap*8-bits.length));put(0,(8-bits.length%8)%8);
+  for(let p=0xEC;bits.length<cap*8;p^=0xEC^0x11)put(p,8);
+  const cw=[];for(let i=0;i<bits.length;i+=8){let b=0;for(let j=0;j<8;j++)b=(b<<1)|bits[i+j];cw.push(b)}
+  const mul=(x,y)=>{let z=0;for(let i=7;i>=0;i--){z=(z<<1)^((z>>>7)*0x11D);z^=((y>>>i)&1)*x}return z};
+  const eccLen=ECC[ver],nb=BLK[ver];
+  const div=new Array(eccLen).fill(0);div[eccLen-1]=1;
+  for(let i=0,root=1;i<eccLen;i++){for(let j=0;j<eccLen;j++){div[j]=mul(div[j],root);if(j+1<eccLen)div[j]^=div[j+1]}root=mul(root,2)}
+  const raw=Math.floor(rawBits(ver)/8),nShort=nb-raw%nb,shortLen=Math.floor(raw/nb);
+  const blocks=[];
+  for(let i=0,k=0;i<nb;i++){
+    const d=cw.slice(k,k+shortLen-eccLen+(i<nShort?0:1));k+=d.length;
+    const r=new Array(eccLen).fill(0);
+    for(const b of d){const f=b^r.shift();r.push(0);div.forEach((c,j)=>r[j]^=mul(c,f))}
+    if(i<nShort)d.push(0);blocks.push(d.concat(r));
+  }
+  const all=[];
+  for(let i=0;i<blocks[0].length;i++)blocks.forEach((b,j)=>{if(i!=shortLen-eccLen||j>=nShort)all.push(b[i])});
+  const size=ver*4+17,m=[],fn=[];
+  for(let y=0;y<size;y++){m.push(new Array(size).fill(false));fn.push(new Array(size).fill(false))}
+  const setF=(x,y,v)=>{m[y][x]=v;fn[y][x]=true};
+  const gb=(v,i)=>((v>>>i)&1)!=0;
+  for(let i=0;i<size;i++){setF(6,i,i%2==0);setF(i,6,i%2==0)}
+  const finder=(cx,cy)=>{for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),x=cx+dx,y=cy+dy;if(x>=0&&x<size&&y>=0&&y<size)setF(x,y,d!=2&&d!=4)}};
+  finder(3,3);finder(size-4,3);finder(3,size-4);
+  let ap=[];
+  if(ver>1){const na=Math.floor(ver/7)+2,step=ver==32?26:Math.ceil((ver*4+4)/(na*2-2))*2;ap=[6];for(let i=0,pos=size-7;i<na-1;i++,pos-=step)ap.splice(1,0,pos);
+    ap.forEach((ax,i)=>ap.forEach((ay,j)=>{if(!((i==0&&j==0)||(i==0&&j==na-1)||(i==na-1&&j==0)))for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)setF(ax+dx,ay+dy,Math.max(Math.abs(dx),Math.abs(dy))!=1)}))}
+  const fmtBits=mask=>{const d=(0<<3)|mask;let r=d;for(let i=0;i<10;i++)r=(r<<1)^((r>>>9)*0x537);const b=((d<<10)|r)^0x5412;
+    for(let i=0;i<=5;i++)setF(8,i,gb(b,i));setF(8,7,gb(b,6));setF(8,8,gb(b,7));setF(7,8,gb(b,8));
+    for(let i=9;i<15;i++)setF(14-i,8,gb(b,i));
+    for(let i=0;i<8;i++)setF(size-1-i,8,gb(b,i));
+    for(let i=8;i<15;i++)setF(8,size-15+i,gb(b,i));setF(8,size-8,true)};
+  fmtBits(0);
+  if(ver>=7){let r=ver;for(let i=0;i<12;i++)r=(r<<1)^((r>>>11)*0x1F25);const b=(ver<<12)|r;
+    for(let i=0;i<18;i++){const c=gb(b,i),a=size-11+i%3,bb=Math.floor(i/3);setF(a,bb,c);setF(bb,a,c)}}
+  let bi=0;
+  for(let right=size-1;right>=1;right-=2){if(right==6)right=5;
+    for(let vert=0;vert<size;vert++)for(let j=0;j<2;j++){const x=right-j,up=((right+1)&2)==0,y=up?size-1-vert:vert;
+      if(!fn[y][x]&&bi<all.length*8){m[y][x]=gb(all[bi>>>3],7-(bi&7));bi++}}}
+  const mk=[(x,y)=>(x+y)%2==0,(x,y)=>y%2==0,(x,y)=>x%3==0,(x,y)=>(x+y)%3==0,(x,y)=>(Math.floor(x/3)+Math.floor(y/2))%2==0,(x,y)=>x*y%2+x*y%3==0,(x,y)=>(x*y%2+x*y%3)%2==0,(x,y)=>((x+y)%2+x*y%3)%2==0];
+  const apply=k=>{for(let y=0;y<size;y++)for(let x=0;x<size;x++)if(!fn[y][x]&&mk[k](x,y))m[y][x]=!m[y][x]};
+  const pen=()=>{let p=0;
+    const lines=[];for(let y=0;y<size;y++){lines.push(m[y].map(v=>v?1:0).join(''));}
+    for(let x=0;x<size;x++){let s='';for(let y=0;y<size;y++)s+=m[y][x]?1:0;lines.push(s)}
+    lines.forEach(s=>{const r=s.match(/0{5,}|1{5,}/g);if(r)r.forEach(t=>p+=t.length-2);
+      const a=s.match(/(?=10111010000|00001011101)/g);if(a)p+=a.length*40});
+    for(let y=0;y<size-1;y++)for(let x=0;x<size-1;x++){const c=m[y][x];if(c==m[y][x+1]&&c==m[y+1][x]&&c==m[y+1][x+1])p+=3}
+    let dark=0;m.forEach(r=>r.forEach(v=>{if(v)dark++}));const tot=size*size;p+=(Math.ceil(Math.abs(dark*20-tot*10)/tot)-1)*10;return p};
+  let best=0,bp=1e9;
+  for(let k=0;k<8;k++){apply(k);fmtBits(k);const p=pen();if(p<bp){bp=p;best=k}apply(k)}
+  apply(best);fmtBits(best);
+  return m;
+}
+function qrDataUrl(text,px){
+  const m=qrMatrix(text),n=m.length,q=4,sc=Math.max(3,Math.floor((px||240)/(n+q*2))),c=document.createElement('canvas');
+  c.width=c.height=(n+q*2)*sc;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.fillStyle='#000';
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(m[y][x])g.fillRect((x+q)*sc,(y+q)*sc,sc,sc);
+  return c.toDataURL('image/png');
+}
+
+const _qrC={};
+const waQrUrl=()=>{const n=waNum(S.shop?.whatsapp);if(n.length<9)return '';if(!_qrC[n])try{_qrC[n]=qrDataUrl('https://wa.me/'+n,240)}catch(e){return ''}return _qrC[n]};
+const waQrHtml=w=>{const u=waQrUrl();return u?`<div style="text-align:center;margin:6px 0"><img src="${u}" style="width:${w}px;height:${w}px"><div style="font-size:10px">تواصل معنا عبر واتساب</div></div>`:''};
+const invCnt=x=>{const q=Math.round(x.items.reduce((a,i)=>a+(+lineU(i).q||0),0)*10000)/10000;return `عدد البنود: ${x.items.length} · مجموع الكميات: ${fmt(q)}`};
 const coHdr=()=>`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3>${S.shop.address?`<div style="text-align:center;font-size:11px">${esc(S.shop.address)}</div>`:''}${S.shop.phones?`<div style="text-align:center;font-size:11px" dir=ltr>${esc(S.shop.phones)}</div>`:''}`;
 const coFtr=()=>S.shop.invoice_note?`<hr><div style="text-align:center">${esc(S.shop.invoice_note)}</div>`:'';
 function coV(){
@@ -2899,9 +2976,10 @@ function coV(){
   $('#v').innerHTML=`<div class=card><b>بيانات الشركة</b><div class=m>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة.</div>
   <div class=m style="margin-top:8px">العنوان</div><input id=cad value="${esc(s.address||'')}" placeholder="مثال: حلب - الجميلية - شارع ...">
   <div class=m>أرقام الهاتف (يمكنك كتابة أكثر من رقم)</div><input id=cph dir=ltr value="${esc(s.phones||'')}" placeholder="0933 000 000 - 021 000 0000">
+  <div class=m>رقم واتساب المحل (يظهر كرمز QR أعلى فواتير البيع، اتركه فارغاً لإخفائه)</div><input id=cwa dir=ltr inputmode=tel value="${esc(s.whatsapp||'')}" placeholder="0933 000 000">
   <div class=m>ملاحظة أسفل الفاتورة (اختياري)</div><input id=cnt value="${esc(s.invoice_note||'')}" placeholder="مثال: شكراً لتعاملكم معنا">
   <button class=b style="width:100%;margin-top:8px" onclick="saveCo()">حفظ</button></div>
-  <div class=card><b>معاينة رأس الفاتورة</b><div style="padding:10px 0">${coHdr()}</div>${coFtr()}</div>
+  <div class=card><b>معاينة رأس الفاتورة</b><div style="padding:10px 0">${coHdr()}${waQrHtml(90)}</div>${coFtr()}</div>
   <div class=card style="border-color:var(--r)"><b class=neg>⚠️ البدء من الصفر أو حذف الشركة</b>
   <div class=m style="margin:6px 0">نزّل نسخة على جهازك أولاً. التصفير يحفظ نسخة أمان تتراجع منها، أما الحذف فنهائي.</div>
   <button class="b s" style="width:100%" onclick="backup()">تنزيل نسخة على جهازك أولاً</button>
@@ -2936,8 +3014,12 @@ async function _once_delCo(){
 
 async function saveCo(...args){return runMutationOnce('saveCo',()=>_once_saveCo(...args))}
 async function _once_saveCo(){
+  const w=($('#cwa')?.value||'').trim();
+  if(w&&waNum(w).length<9)return toast('رقم الواتساب غير صالح');
   const r=await call('set_shop_info',{p_shop:S.shop.id,p_address:$('#cad').value,p_phones:$('#cph').value,p_note:$('#cnt').value});
-  if(r!==undefined){await refresh();toast('تم الحفظ ✓');coV()}
+  if(r===undefined)return;
+  if(w!==(S.shop.whatsapp||'')){const r2=await call('set_shop_whatsapp',{p_shop:S.shop.id,p_num:w});if(r2===undefined)return}
+  await refresh();toast('تم الحفظ ✓');coV()
 }
 
 /* ---- النسخ الاحتياطي (تبويب مستقل) ---- */
