@@ -1269,8 +1269,8 @@ function invPages(x){
   return ch.map((c,pi)=>{const last=pi==ch.length-1;
     const body=(pi==0?`${x.kind=='sale'?waQrHtml(70):''}<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px"><span><b>${x.kind=='sale'?'الزبون':'المورد'}:</b> ${esc(x.partners?.name||'نقدي')}</span><span><b>التاريخ:</b> ${x.date}</span><span><b>${x.invoice_no?'رقم الفاتورة':'المرجع'}:</b> <span dir=ltr>${x.invoice_no||String(x.id).slice(-6).toUpperCase()}</span></span></div>`:'')
     +`<table style="width:100%;border-collapse:collapse"><tr><th ${TH}>#<th ${TH}>الصنف<th ${TH}>الكمية${dual?`<th ${TH}>السعر (ل.س)<th ${TH}>السعر ($)<th ${TH}>الإجمالي (ل.س)<th ${TH}>الإجمالي ($)`:`<th ${TH}>السعر<th ${TH}>الإجمالي`}</tr>${c.map((i,k)=>{const L=lineU(i);return `<tr><td ${TD}>${pi*N+k+1}<td ${TD}>${esc(i.n)}${i.note?`<div style="font-size:11px;color:#555">ملاحظة: ${esc(i.note)}</div>`:''}<td ${TD}>${fmt(L.q)} ${esc(L.u)}${dual?`<td ${TD}>${fmt(dualV(x,L.p).s)}<td ${TD}>${fmt(dualV(x,L.p).u)}<td ${TD}>${fmt(dualV(x,L.t).s)}<td ${TD}>${fmt(dualV(x,L.t).u)}`:`<td ${TD}>${fmt(L.p)}<td ${TD}>${fmt(L.t)}`}</tr>`}).join('')}</table>`
-    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div><div style="margin-top:10px;font-size:13px">${invCnt(x)}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
-    return {title:PDFLBL[x.kind]+(x.voided_at?' (ملغاة)':''),sub:'',body,last}})
+    +(last?`<div style="margin-top:14px;font-size:14px;width:58%;margin-inline-start:auto">${+x.discount>0?`<div style="display:flex;justify-content:space-between"><span>المجموع قبل الحسم</span><span>${M(+x.total+ +x.discount)}</span></div><div style="display:flex;justify-content:space-between"><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><span>-${M(x.discount)}</span></div>`:''}<div style="display:flex;justify-content:space-between"><span>${+x.discount>0?'الصافي':'الإجمالي'}</span><b>${M(x.total)}</b></div><div style="display:flex;justify-content:space-between"><span>المدفوع</span><span>${M(x.paid)}</span></div><div style="display:flex;justify-content:space-between;border-top:1px solid #999;margin-top:4px;padding-top:4px"><span>المتبقي</span><b>${M(x.total-x.paid)}</b></div>${dual?`<div style="font-size:11px;color:#555;margin-top:6px">سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</div>`:''}</div><div style="margin-top:10px;font-size:13px">${tafqeet(x.total,x.currency)}</div><div style="margin-top:4px;font-size:13px">${invCnt(x)}</div>${x.voided_at?'<div style="text-align:center;color:#c0392b;font-size:28px;font-weight:700;margin-top:22px">ملغاة</div>':''}`:'');
+    return {title:invTitle(x)+(x.voided_at?' (ملغاة)':''),sub:x.kind=='sale'?'بيع':'شراء',body,last}})
 }
 function stmtPages(o,f,t,rows,det){
   const A=S.sacc||stmtAcc(o),bal=A.bal,dr=A.dr,cr=A.cr,LIM=det?24:20,pages=[];
@@ -1886,7 +1886,7 @@ function histList(){
 }
 function showInv(k){
   const x=S.hist[k];
-  $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' #'+x.invoice_no:''} · ${x.date}</b>
+  $('#v').innerHTML=`<div class=card><b>${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' #'+x.invoice_no:''} · ${invKind(x)} · ${x.date}</b>
   <div class=m>${esc(x.partners?.name||'نقدي')}${x.voided_at?' · <span class=neg>ملغاة</span>':''}</div>
   ${x.items.map(i=>{const L=lineU(i);return `<div class=it><span>${esc(i.n)}<br><span class=m>${fmt(L.q)} ${esc(L.u)} × ${fmt(L.p)}${+i.p===0?' · مجاني 🎁':''}</span>${i.note?`<br><span class=m>📝 ${esc(i.note)}</span>`:''}</span><b>${fmt(L.t)}</b></div>`}).join('')}
   ${+x.discount>0?`<div class=it><span>المجموع قبل الحسم</span><b>${fmt(+x.total+ +x.discount)}</b></div><div class=it><span>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}</span><b class=neg>-${fmt(x.discount)}</b></div>`:''}<h3>${+x.discount>0?'الصافي':'الإجمالي'}: ${fmt(x.total)} ${x.currency}</h3><div class=m>المدفوع: ${fmt(x.paid)} · المتبقي: ${fmt(x.total-x.paid)}</div>
@@ -1918,9 +1918,9 @@ const dualS=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س<br>$'+fmt(v.u)};
 const dualL=(x,a)=>{const v=dualV(x,a);return fmt(v.s)+' ل.س / $'+fmt(v.u)};
 function printObj(x){
   const dual=x.kind=='sale'&&dualOn(),m=a=>dual?dualL(x,a):fmt(a),R=dualR(x);
-  $('#rcpt').innerHTML=`${coHdr()}${x.kind=='sale'?waQrHtml(80):''}<div style="text-align:center">${x.kind=='sale'?'فاتورة بيع':'فاتورة شراء'}${x.invoice_no?' رقم '+x.invoice_no:''} · ${x.date}</div><hr>
+  $('#rcpt').innerHTML=`${coHdr()}<div style="text-align:center;font-size:17px;font-weight:700;margin-top:4px">${invTitle(x)}${x.voided_at?' (ملغاة)':''}</div>${x.kind=='sale'?waQrHtml(80):''}<div style="text-align:center">${x.kind=='sale'?'بيع':'شراء'}${x.invoice_no?' رقم '+x.invoice_no:''} · ${x.date}</div><hr>
   <table>${x.items.map(i=>{const L=lineU(i);return dual?`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×<br>${dualS(x,L.p)}<td>${dualS(x,L.t)}`:`<tr><td>${esc(i.n)}${i.note?`<br><small>${esc(i.note)}</small>`:''}<td>${fmt(L.q)} ${esc(L.u)}×${fmt(L.p)}<td>${fmt(L.t)}`}).join('')}</table><hr>
-  ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}${x.voided_at?'<br><b>(ملغاة)</b>':''}<hr><div style="font-size:11px">${invCnt(x)}</div>`;
+  ${+x.discount>0?`المجموع قبل الحسم: ${m(+x.total+ +x.discount)}<br>${x.kind=='sale'?'الحسم الممنوح':'الحسم المكتسب'}: -${m(x.discount)}<br>`:''}<b>${+x.discount>0?'الصافي':'الإجمالي'}: ${dual?dualL(x,x.total):fmt(x.total)+' '+x.currency}</b><br>المدفوع: ${m(x.paid)}<br>المتبقي: ${m(x.total-x.paid)}${dual?`<br><small>سعر الصرف: 1$ = ${fmt(R.ru)} ل.س</small>`:''}<hr><div style="font-size:12px">${tafqeet(x.total,x.currency)}</div><div style="font-size:11px;margin-top:4px">${invCnt(x)}</div>`;
   $('#rcpt').insertAdjacentHTML('beforeend',coFtr());
   print()
 }
@@ -3237,6 +3237,43 @@ const waQrUrl=()=>{const n=waNum(S.shop?.whatsapp);if(n.length<9)return '';if(!_
 const waGrpUrl=()=>{const sh=S.shop||{};if(sh.wa_img)return sh.wa_img;const l=(sh.wa_group||'').trim();if(!/^https?:\/\//i.test(l))return '';if(!_qrC['g'+l])try{_qrC['g'+l]=qrDataUrl(l,240)}catch(e){return ''}return _qrC['g'+l]};
 const waQrHtml=w=>{const it=[],u=waQrUrl(),g=waGrpUrl();if(u)it.push([u,'تواصل عبر واتساب']);if(g)it.push([g,'انضم لمجموعتنا']);return it.length?`<div style="display:flex;justify-content:center;gap:14px;margin:6px 0">${it.map(([src,l])=>`<div style="text-align:center"><img src="${src}" style="width:${w}px;height:${w}px;object-fit:contain"><div style="font-size:10px">${l}</div></div>`).join('')}</div>`:''};
 const invCnt=x=>{const q=Math.round(x.items.reduce((a,i)=>a+(+lineU(i).q||0),0)*10000)/10000;return `عدد البنود: ${x.items.length} · مجموع الكميات: ${fmt(q)}`};
+/* ====== تفقيط المبلغ بالحروف العربية ====== */
+const TQ={m:['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة','عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'],
+ f:['','واحدة','اثنتان','ثلاث','أربع','خمس','ست','سبع','ثماني','تسع','عشر','إحدى عشرة','اثنتا عشرة','ثلاث عشرة','أربع عشرة','خمس عشرة','ست عشرة','سبع عشرة','ثماني عشرة','تسع عشرة'],
+ t:['','','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'],
+ h:['','مئة','مئتان','ثلاثمئة','أربعمئة','خمسمئة','ستمئة','سبعمئة','ثمانمئة','تسعمئة']};
+const TQU={SYP:{g:'ليرة سورية',a:'ليرة سورية',d:'ليرتان سوريتان',p:'ليرات سورية',fem:1,sub:['قرش','قرشان','قروش','قرشاً']},
+ USD:{g:'دولار أمريكي',a:'دولاراً أمريكياً',d:'دولاران أمريكيان',p:'دولارات أمريكية',fem:0,sub:['سنت','سنتان','سنتات','سنتاً']}};
+function tq3(n,fem){
+  const h=Math.floor(n/100),r=n%100,p=[];
+  if(h)p.push(TQ.h[h]);
+  if(r){if(r<20)p.push((fem?TQ.f:TQ.m)[r]);else{const u=r%10,t=Math.floor(r/10);p.push(u?((u==1&&fem?'إحدى':(fem?TQ.f:TQ.m)[u])+' و'+TQ.t[t]):TQ.t[t])}}
+  return p.join(' و')
+}
+function tqInt(n,fem){
+  if(!n)return 'صفر';
+  const P=[[1e9,'مليار','ملياران','مليارات','ملياراً'],[1e6,'مليون','مليونان','ملايين','مليوناً'],[1e3,'ألف','ألفان','آلاف','ألفاً']],o=[];let rest=n;
+  P.forEach(([v,s1,s2,pl,ac])=>{const g=Math.floor(rest/v);rest%=v;if(!g)return;
+    if(g==1)o.push(s1);else if(g==2)o.push(s2);
+    else{const tl=g%100;o.push((g==200?'مئتا':tq3(g,false))+' '+(tl>=3&&tl<=10?pl:tl>=11?ac:s1))}});
+  if(rest)o.push(rest==200?'مئتا':tq3(rest,fem));
+  return o.join(' و')
+}
+function tqPhrase(n,U,fem){
+  if(n==1)return U.g+' '+(fem?'واحدة':'واحد');
+  if(n==2)return U.d;
+  const tl=n%100;return tqInt(n,fem)+' '+(tl>=3&&tl<=10?U.p:tl>=11?U.a:U.g)
+}
+function tafqeet(v,code){
+  v=Math.round((+v||0)*100)/100;if(!(v>0)||v>=1e12)return '';
+  const n=Math.floor(v+1e-9),fr=Math.round((v-n)*100),cu=(S.currencies||[]).find(c=>c.code==code),nm=cu?cu.name:code;
+  const U=TQU[code]||{g:nm,a:nm,d:nm,p:nm,fem:0,sub:null},o=[];
+  if(n)o.push(tqPhrase(n,U,U.fem));
+  if(fr){if(U.sub)o.push(fr==1?U.sub[0]+' واحد':fr==2?U.sub[1]:tqInt(fr,false)+' '+(fr%100>=3&&fr%100<=10?U.sub[2]:U.sub[3]));else o.push(tqInt(fr,false)+' من مئة')}
+  return 'فقط '+o.join(' و')+' لا غير'
+}
+const invKind=x=>+x.paid>=+x.total-0.0001?'نقدية':'آجلة';
+const invTitle=x=>'فاتورة '+invKind(x);
 const coHdr=()=>`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3>${S.shop.address?`<div style="text-align:center;font-size:11px">${esc(S.shop.address)}</div>`:''}${S.shop.phones?`<div style="text-align:center;font-size:11px" dir=ltr>${esc(S.shop.phones)}</div>`:''}`;
 const coFtr=()=>S.shop.invoice_note?`<hr><div style="text-align:center">${esc(S.shop.invoice_note)}</div>`:'';
 function coV(){
