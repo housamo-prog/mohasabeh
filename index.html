@@ -2589,9 +2589,11 @@ function uoV(pid){
   const AO={sale:'في البيع',purchase:'في الشراء',both:'في البيع والشراء'};
   const uopts=`<option value="">${esc(bu)}</option>`+us.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
   el.innerHTML=`<div class=card><b>وحدات الكمية</b>
-  <div class=m>الوحدة الأساسية: <b>${esc(bu)}</b>. أضف وحدات أكبر أو أصغر منها (طرد، كرتونة، كيلو...)، وتختارها من الفاتورة لكل بند.</div>
-  ${us.map(u=>`<div class=it><span>${esc(u.name)}<br><span class=m>1 ${esc(u.name)} = ${fmt(u.factor)} ${esc(bu)}</span></span><button class="b s neg" style="padding:4px 10px" onclick="delUnit('${u.id}','${pid}')">حذف</button></div>`).join('')||'<div class=m style="margin:6px 0">لا توجد وحدات إضافية بعد</div>'}
-  <div class=row><input id=un1 placeholder="اسم الوحدة (طرد)"><input id=uf1 type=number inputmode=decimal dir=ltr placeholder="تساوي كم ${esc(bu)}؟"></div>
+  <div class=m>الوحدة الأساسية: <b>${esc(bu)}</b>. أضف وحدات أكبر منها (كرتونة) أو أصغر منها (قطعة)، ويُحسب سعرها تلقائياً من سعر الأساسية، وتختارها من الفاتورة لكل بند. لا يُقبل تكرار اسم وحدة.</div>
+  ${us.map(u=>`<div class=it><span>${esc(u.name)}<br><span class=m>${unitRel(u,bu)}${unitPrice(p,u)}</span></span><button class="b s neg" style="padding:4px 10px" onclick="delUnit('${u.id}','${pid}')">حذف</button></div>`).join('')||'<div class=m style="margin:6px 0">لا توجد وحدات إضافية بعد</div>'}
+  <select id=ud onchange="unitFormUpd('${pid}')"><option value=lg>وحدة أكبر من ${esc(bu)} (مثل كرتونة)<option value=sm>وحدة أصغر من ${esc(bu)} (مثل قطعة)</select>
+  <div class=row><input id=un1 placeholder="اسم الوحدة الجديدة" oninput="unitFormUpd('${pid}')"><input id=uf1 inputmode=decimal dir=ltr placeholder="تساوي كم ${esc(bu)}؟" oninput="unitFormUpd('${pid}')"></div>
+  <div class=m id=uprev></div>
   <button class="b s" style="width:100%" onclick="addUnit('${pid}')">+ إضافة وحدة</button></div>
   <div class=card><b>العروض التجارية</b>
   <div class=m>مثال: مع كل 1 طرد ← 1 قطعة مجاناً. تُضاف الكمية المجانية تلقائياً في الفاتورة وتُخصم من المخزون (وفي الشراء تخفض متوسط التكلفة).</div>
@@ -2601,13 +2603,32 @@ function uoV(pid){
   <div class=row><div><label class=fl>يُعطى مجاناً</label><input id=of_fq type=number inputmode=decimal dir=ltr value="1"></div><div><label class=fl>بوحدة</label><select id=of_fu>${uopts}</select></div></div>
   <button class="b s" style="width:100%;margin-top:6px" onclick="addOffer('${pid}')">+ إضافة عرض</button></div>`
 }
+const unitKey=s=>String(s||'').normalize('NFKC').replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+const unitRel=(u,bu)=>u.factor>0&&u.factor<1?`1 ${esc(bu)} = ${fmt(Math.round(1/u.factor*10000)/10000)} ${esc(u.name)}`:`1 ${esc(u.name)} = ${fmt(u.factor)} ${esc(bu)}`;
+const unitPrice=(p,u)=>{const v=tierPrice(p,'retail');return v>0?` · سعر المفرق: ${fmt(Math.round(v*u.factor*10000)/10000)} ${esc(curSym(p.sale_currency||'SYP'))}`:''};
+function unitFormUpd(pid){
+  const p=S.prods.find(x=>x.id==pid)||{},bu=p.unit||'قطعة',d=$('#ud')?$('#ud').value:'lg',n=($('#un1')||{}).value||'',N=+toEn(($('#uf1')||{}).value||'');
+  const f=$('#uf1');if(f)f.placeholder=d=='sm'?'كم '+(n.trim()||'وحدة')+' في 1 '+bu+'؟':'تساوي كم '+bu+'؟';
+  const el=$('#uprev');if(!el)return;
+  el.textContent=n.trim()&&N>0?(d=='sm'?`1 ${bu} = ${fmt(N)} ${n.trim()}`:`1 ${n.trim()} = ${fmt(N)} ${bu}`)+(tierPrice(p,'retail')>0?` · سعر ${n.trim()}: ${fmt(Math.round(tierPrice(p,'retail')*(d=='sm'?1/N:N)*10000)/10000)} ${curSym(p.sale_currency||'SYP')}`:''):''
+}
 async function addUnit(...a){return runMutationOnce('addUnit',()=>_once_addUnit(...a))}
 async function _once_addUnit(pid){
-  const n=$('#un1').value.trim(),f=+toEn($('#uf1').value);
+  const p=S.prods.find(x=>x.id==pid)||{},bu=p.unit||'قطعة';
+  const n=$('#un1').value.trim().replace(/\s+/g,' '),N=+toEn($('#uf1').value),dir=$('#ud')?$('#ud').value:'lg';
   if(!n)return toast('اكتب اسم الوحدة');
-  if(!(f>0))return toast('اكتب كم تساوي هذه الوحدة من الوحدة الأساسية (رقم أكبر من صفر)');
-  const {error}=await db.from('product_units').insert({shop_id:S.shop.id,product_id:pid,name:n,factor:f});
+  if(!(N>0))return toast(dir=='sm'?'اكتب كم وحدة من هذه في الوحدة الأساسية (رقم أكبر من صفر)':'اكتب كم تساوي هذه الوحدة من الوحدة الأساسية (رقم أكبر من صفر)');
+  if(N==1)return toast('الرقم 1 يجعل الوحدة مساوية للأساسية، اكتب رقماً مختلفاً');
+  if(unitKey(n)==unitKey(bu))return toast('هذا الاسم هو اسم الوحدة الأساسية، اختر اسماً آخر');
+  if((S.units[pid]||[]).some(u=>unitKey(u.name)==unitKey(n)))return toast('هذه الوحدة مضافة لهذه المادة');
+  const f=+((dir=='sm'?1/N:N).toFixed(10));
+  if(Math.abs(f*1000-Math.round(f*1000))>1e-6){
+    const q=await db.rpc('qty_scale_ok');
+    if(q.error||q.data!==true)return toast('هذه النسبة تحتاج دقة أعلى في الكميات (6 خانات). شغّل ملف SQL الخاص بدقة الكميات أولاً، أو اجعل الوحدة الأصغر هي الأساسية.')
+  }
+  const {data,error}=await db.from('product_units').insert({shop_id:S.shop.id,product_id:pid,name:n,factor:f}).select('id,factor').single();
   if(error)return toast(error.code=='23505'?'هذه الوحدة مضافة لهذه المادة':error.message);
+  if(data&&Math.abs(+data.factor-f)>1e-9){await db.from('product_units').delete().eq('id',data.id);return toast('عمود نسبة الوحدة في القاعدة لا يحفظ الكسور بدقة. شغّل ملف SQL الجديد ثم أعد المحاولة.')}
   await loadUO();saveCache();uoV(pid);toast('تمت إضافة الوحدة ✓')
 }
 async function delUnit(...a){return runMutationOnce('delUnit',()=>_once_delUnit(...a))}
