@@ -896,7 +896,7 @@ function freeBase(i,ign){if((i.noOffer&&!ign)||i.free||i.locked||S.mode==='open'
     const k=Math.floor(qb/per+1e-9),f=+(k*(+o.free_qty)*unitF(i.id,o.free_unit_id)).toFixed(6);if(f>best)best=f});
   return best}
 function invLines(){const o=[];S.cart.forEach(i=>{const f=i.f||1,p=S.prods.find(x=>x.id==i.id)||{};o.push({id:i.id,n:i.name,q:+(i.qty*f).toFixed(6),p:i.price/f,un:unitNm(i),uq:i.qty,note:(i.note||'').trim()||null});const fr=freeBase(i);if(fr>0)o.push({id:i.id,n:i.name+' (مجاني)',q:fr,p:0,un:p.unit||'قطعة',uq:fr,note:null})});return o}
-function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),pb=i.price/f,p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt},xe=(!sale&&isTrk(p)&&i.exp)?{expiry:i.exp}:{};
+function buildItems(sale){const o=[];S.cart.forEach(i=>{const f=i.f||1,qb=+(i.qty*f).toFixed(6),lt=Math.round(i.qty*i.price*10000)/10000,pb=f==1?i.price:(qb>0?lt/qb:i.price/f),p=S.prods.find(x=>x.id==i.id)||{},nt=(i.note||'').trim().slice(0,200)||null,ex={unit_name:unitNm(i),unit_qty:i.qty,note:nt},xe=(!sale&&isTrk(p)&&i.exp)?{expiry:i.exp}:{};
   o.push(sale?{product_id:i.id,qty:qb,price:pb,...ex}:{product_id:i.id,qty:qb,unit_cost:pb,...ex,...xe});
   const fr=freeBase(i);if(fr>0){const fx={unit_name:p.unit||'قطعة',unit_qty:fr};o.push(sale?{product_id:i.id,qty:fr,price:0,...fx}:{product_id:i.id,qty:fr,unit_cost:0,...fx,...xe})}});return o}
 const lineU=i=>{const bu=((S.prods.find(x=>x.id==i.id)||{}).unit)||'',t=Math.round((+i.q)*(+i.p)*10000)/10000;if(i.un&&+i.uq>0)return{q:+i.uq,u:i.un,p:t/+i.uq,t};return{q:+i.q,u:bu,p:+i.p,t}};
