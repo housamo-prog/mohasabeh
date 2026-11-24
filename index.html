@@ -347,7 +347,7 @@ async function partnerChanged(){
   if(S.mode==='buy'&&p){const {data,error}=await db.from('supplier_product_prices').select('partner_id,product_id,currency,unit_price').eq('shop_id',S.shop.id).eq('partner_id',p.id);if(error){toast('تعذر تحميل أسعار هذا المورد: '+error.message);return}S.supplierPrices=(S.supplierPrices||[]).filter(x=>x.partner_id!==p.id).concat(data||[]);recalcCartPrices();}
 }
 const can=k=>S.role=='owner'||(S.perms||[]).includes(k),canAny=ks=>ks.some(can);
-const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],recon:['vouchers','accounts'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',audit:'o',co:'o',bkp:'o',curr:'o'};
+const TABP={sale:['sell'],buy:['purchase'],hist:['sell','invoices','edit_invoices','reports'],debt:['vouchers'],recon:['vouchers','accounts'],vch:['vouchers'],rcv:['vouchers'],rep:['reports'],stock:['stock'],offers:['products','sell','purchase'],stocktake:['stock'],expiry:['stock','products','purchase','sell'],mfg:['mfg'],acc:['accounts'],team:'o',audit:'o',co:'o',bkp:'o',curr:'o',daily:'o',closing:'o'};
 const tabOk=k=>{const p=TABP[k];return !p||(p==='o'?S.role=='owner':canAny(p))};
 
 /* ---- أيقونات (Lucide, ISC) ---- */
@@ -393,7 +393,7 @@ plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
 minus:'<path d="M5 12h14"/>',
 gift:'<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
 users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'};
-const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k==='recon'?'check':k==='audit'?'hist':k]||''}</svg>`;
+const ic=(k,s=20)=>`<svg class=ic width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[k==='offers'?'gift':k==='stocktake'?'stock':k==='expiry'?'cal':k==='daily'?'cal':k==='closing'?'wallet':k==='recon'?'check':k==='audit'?'hist':k]||''}</svg>`;
 
 /* ---- النوافذ المنبثقة (بديل prompt / confirm / alert) ---- */
 const toEn=s=>{let t=String(s??'').replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/٫/g,'.').replace(/[،٬\s]/g,',').replace(/^,+|,+$/g,'');
@@ -543,7 +543,7 @@ function toggleTheme(){const t=isDark()?'light':'dark';document.documentElement.
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',themeSync);
 
 /* ---- التنقل ---- */
-const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','recon','acc','rep','curr']],['الإدارة',['memo','team','audit','co','bkp','help']]];
+const GROUPS=[['',['home']],['العمليات',['sale','buy','hist','rcv','vch','daily','closing']],['المخزون والإنتاج',['prod','offers','stock','stocktake','expiry','mfg']],['المالية',['debt','recon','acc','rep','curr']],['الإدارة',['memo','team','audit','co','bkp','help']]];
 const PRI=['home','sale','hist','prod','rep','buy','debt','stock','rcv','help'];
 const priTabs=()=>PRI.filter(tabOk).slice(0,4);
 function drawer(on){document.body.classList.toggle('drw',!!on);const m=$('#bn [data-more]');if(m)m.setAttribute('aria-expanded',!!on);if(on)setTimeout(()=>{const b=$('#side .snav button.on')||$('#side .snav button');b&&b.focus()},120)}
@@ -703,7 +703,7 @@ async function mk(...args){return runMutationOnce('mk',()=>_once_mk(...args))}
 async function _once_mk(){const n=$('#sn').value.trim();if(!n)return;const r=await call('create_shop',{p_name:n});if(r!==undefined)load()}
 
 /* ---- الهيكل ---- */
-const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',audit:'سجل العمليات',debt:'الديون',recon:'مطابقة الحسابات',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
+const TABS={home:'الرئيسية',sale:'بيع',buy:'شراء',hist:'الفواتير',prod:'المنتجات',offers:'العروض التجارية',daily:'الحركة اليومية',closing:'إغلاق الصندوق اليومي',stocktake:'الجرد السنوي',expiry:'صلاحية المنتجات',audit:'سجل العمليات',debt:'الديون',recon:'مطابقة الحسابات',rcv:'القبض والدفع',vch:'السندات',rep:'التقارير',stock:'المخزون',mfg:'التصنيع',acc:'الحسابات',curr:'إدارة العملات',memo:'المفكرة',team:'الفريق',co:'بيانات الشركة',bkp:'النسخ الاحتياطي',help:'الدليل',open:'افتتاحي'};
 function shell(){
   const exp=new Date(S.shop.subscription_until)<new Date(new Date().toDateString());
   const pri=priTabs();
@@ -727,7 +727,7 @@ function go(k){
   if(S.edit&&k!==S.mode){S.edit=null;S.cart=[]}
   if(k=='sale'||k=='buy'||k=='open'){if(S.mode!==k)S.cart=[];S.mode=k}
   document.querySelectorAll('[data-k]').forEach(b=>{const on=b.dataset.k==k;b.classList.toggle('on',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current')});{const m=document.querySelector('#bn [data-more]');if(m)m.classList.toggle('on',!priTabs().includes(k)&&k!='open')}
-  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,recon:reconV,audit:auditV,debt:debtV,rep:repV,curr:currencyV,memo:memoV})[k]()
+  ({home:homeV,sale:inv,buy:inv,hist:histV,team:teamV,stock:stockV,mfg:mfgV,acc:acctV,rcv:rcvV,vch:vchV,bkp:bkpV,co:coV,help:helpV,open:inv,prod:prodV,offers:offersV,stocktake:stocktakeV,expiry:expiryV,recon:reconV,audit:auditV,debt:debtV,rep:repV,curr:currencyV,memo:memoV,daily:dailyV,closing:closeV})[k]()
 }
 async function setRate(){nav('curr')}
 async function currencyV(){
@@ -3032,6 +3032,82 @@ function pfRender(){
 }
 function pfPrint(){const B=pfBuild();if(!B||!B.rows.length)return toast('اعرض التقرير أولاً');repPrint(B.title,B.sub,tblHtml(B.cols,B.rows,B.tot,THP,TDP))}
 function pfPdf(){const B=pfBuild();if(!B||!B.rows.length)return toast('اعرض التقرير أولاً');return repPdf(B.title,B.sub,B.cols,B.rows,B.tot,'report-'+today()+'.pdf')}
+
+/* ====== الحركة اليومية وإغلاق الصندوق ====== */
+const DAILY_LABEL={sale:'بيع',sale_void:'إلغاء بيع',purchase:'شراء',purchase_void:'إلغاء شراء',entry:'قيد محاسبي',stock:'حركة مخزون',product_add:'إضافة مادة',product_delete:'حذف مادة',product_price:'تغيير أسعار',partner_add:'إضافة طرف',member_add:'إضافة مستخدم',member_remove:'إزالة مستخدم',member_change:'تعديل صلاحيات',recon:'مطابقة حساب',restore_or_reset:'استرجاع أو تصفير'};
+const CLOSE_LBL={sale:'مبيعات نقدية',purchase:'مشتريات نقدية',receipt:'قبض من زبائن',payment:'دفع للموردين',expense:'مصاريف',equity:'رأس مال / سحب',exchange:'تصريف دولار',void:'إلغاء فواتير',void_voucher:'إلغاء سندات',sale_return:'مرتجع مبيع نقدي',purchase_return:'مرتجع شراء نقدي',production:'تصنيع',opening:'افتتاحي',adjust:'تسوية جرد',offset:'مقاصة',cost_adjust:'تعديل كلفة',voucher:'سند قيد',before:'الرصيد السابق'};
+async function dailyV(){
+  if(!S.dayD)S.dayD=today();
+  $('#v').innerHTML=`<div class=card><b>الحركة اليومية</b>
+    <div class=m>كل العمليات المنفذة في اليوم المختار</div>
+    <div class=row style="margin:8px 0;align-items:center">
+      <input type=date id=dd value="${S.dayD}" dir=ltr onchange="S.dayD=this.value;dailyV()" style="flex:1">
+      <button class="b s" onclick="S.dayD=today();dailyV()">اليوم</button></div>
+    <div id=ddsum class=m style="margin-bottom:8px"></div>
+    <div id=ddl><div class=m>جارٍ التحميل...</div></div></div>`;
+  const {data,error}=await db.rpc('audit_list',{p_shop:S.shop.id,p_from:S.dayD,p_to:S.dayD,p_limit:500});
+  const el=$('#ddl');if(!el)return;
+  if(error){el.innerHTML='<div class=m>'+esc(error.message)+'</div>';return}
+  const rows=data||[];
+  const cnt={};rows.forEach(r=>{cnt[r.action]=(cnt[r.action]||0)+1});
+  const sumTxt=Object.keys(cnt).map(k=>(DAILY_LABEL[k]||k)+': '+cnt[k]).join(' · ');
+  $('#ddsum').textContent=rows.length?('عدد العمليات: '+rows.length+' — '+sumTxt):'';
+  if(!rows.length){el.innerHTML='<div class=empty>لا توجد عمليات في هذا اليوم</div>';return}
+  el.innerHTML=rows.map(r=>{
+    const d=r.detail||{};
+    const t=new Date(r.at).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Damascus'});
+    const isMoney=['sale','purchase','entry'].includes(r.action);
+    const amt=isMoney?((r.action==='entry'?r.amount:d.total)!=null?fmt(r.action==='entry'?r.amount:d.total)+' '+esc(d.currency||'ل.س'):''):'';
+    const what=d.description||d.name||'';
+    return `<div class=it><span><b>${esc(DAILY_LABEL[r.action]||r.action)}</b>${what?' — '+esc(what):''}<br><span class=m>${esc(r.user_email||'')}</span></span><span style="text-align:end">${amt?'<b>'+amt+'</b><br>':''}<span class=m>${t}</span></span></div>`;
+  }).join('');
+}
+async function closeV(){
+  if(!S.dayC)S.dayC=today();
+  $('#v').innerHTML=`<div class=card><b>إغلاق الصندوق اليومي</b>
+    <div class=m>يعرض حركة الصندوق في اليوم والمتوقع فيه، ثم تُدخل المبلغ الفعلي لتعرف الفرق.</div>
+    <div class=row style="margin:8px 0;align-items:center"><input type=date id=cd value="${S.dayC}" dir=ltr onchange="S.dayC=this.value;closeV()" style="flex:1"><button class="b s" onclick="S.dayC=today();closeV()">اليوم</button></div>
+    <div id=cdl><div class=m>جارٍ التحميل...</div></div></div>`;
+  const {data,error}=await db.rpc('day_cash',{p_shop:S.shop.id,p_day:S.dayC});
+  const el=$('#cdl');if(!el)return;
+  if(error){el.innerHTML='<div class=m>'+esc(/function|schema cache|does not exist/i.test(error.message||'')?'شغّل ملف SQL الخاص بإغلاق الصندوق أولاً':error.message)+'</div>';return}
+  const rows=data||[];
+  const calc=usd=>{
+    const R=rows.filter(r=>usd?r.sys_code==='1011':r.sys_code!=='1011');
+    const open=R.filter(r=>r.ref_type==='before').reduce((a,r)=>a+(+r.inflow-+r.outflow),0);
+    const day=R.filter(r=>r.ref_type!=='before');
+    const expected=open+day.reduce((a,r)=>a+(+r.inflow-+r.outflow),0);
+    return {open,day,expected};
+  };
+  S.closeData={s:calc(false),u:calc(true)};
+  const block=(title,b,cur,id)=>`<div style="margin-top:12px"><b>${title}</b>
+    <div class=it><span>الرصيد الافتتاحي</span><span>${fmt(b.open)}</span></div>
+    ${b.day.length?b.day.map(r=>{const net=+r.inflow-+r.outflow;return `<div class=it><span>${esc(CLOSE_LBL[r.ref_type]||r.ref_type)}</span><span style="color:${net<0?'#dc2626':'#16a34a'}">${fmt(net)}</span></div>`}).join(''):'<div class=m>لا حركة لهذا اليوم</div>'}
+    <div class=it><span><b>المتوقع في الصندوق</b></span><span><b>${fmt(b.expected)} ${cur}</b></span></div>
+    <label class=fl>المبلغ الفعلي في الصندوق (${cur})</label>
+    <input id=${id} inputmode=decimal dir=ltr placeholder="${fmt(b.expected)}" oninput="closeDiff()">
+    <div id=${id}d class=m></div></div>`;
+  el.innerHTML=block('الصندوق بالليرة السورية',S.closeData.s,'ل.س','cs')+block('الصندوق بالدولار',S.closeData.u,'$','cu')+
+    '<button class=b style="width:100%;margin-top:12px" onclick="closeSave()">حفظ الإغلاق</button>';
+}
+function closeDiff(){
+  const d=S.closeData;if(!d)return;
+  [['cs','s'],['cu','u']].forEach(([id,k])=>{
+    const v=$('#'+id).value,out=$('#'+id+'d');if(!out)return;
+    if(String(v).trim()===''){out.textContent='';return}
+    const diff=Math.round((+toEn(v)-d[k].expected)*100)/100;
+    out.textContent='الفرق: '+fmt(diff)+(diff===0?' ✓ مطابق':diff>0?' (زيادة)':' (عجز)');
+  });
+}
+async function closeSave(){
+  const d=S.closeData;if(!d)return;
+  const cs=$('#cs').value.trim(),cu=$('#cu').value.trim();
+  if(cs===''&&cu==='')return toast('أدخل المبلغ الفعلي في الصندوق');
+  const body='الليرة: متوقع '+fmt(d.s.expected)+' · فعلي '+(cs===''?'-':fmt(+toEn(cs)))+'\nالدولار: متوقع '+fmt(d.u.expected)+' · فعلي '+(cu===''?'-':fmt(+toEn(cu)));
+  const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:(await db.auth.getUser()).data.user.id,title:'إغلاق الصندوق '+S.dayC,body,is_done:true});
+  if(error)return toast(error.message);
+  toast('تم حفظ إغلاق الصندوق ✓ (يظهر في المفكرة)');
+}
 
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
