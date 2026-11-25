@@ -961,6 +961,7 @@ async function _once_post(){
     if(bad&&navigator.onLine){await refresh();bad=chk()}
     if(bad&&!await ok('الكمية غير كافية',{msg:bad+'\n\nسيصبح رصيد هذا المستودع بالسالب. هل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return
   }
+  if(sale){const w=saleMarginWarn();if(w.length&&!await ok('تنبيه الأرباح',{msg:'هذه البنود بسعر منخفض مقارنة بالتكلفة:\n'+w.join('\n')+'\n\nهل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return}
   if(!sale&&!S.edit)await askBuyPrices();
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:buildItems(sale),p_paid:paid};
@@ -3732,6 +3733,24 @@ async function toUsdPrices(){
   await refresh();
   toast(fail?('تم التحويل مع فشل '+fail+' مادة'):'تم تحويل الأسعار إلى الدولار ✓');
   currencyV();
+}
+
+/* ====== تنبيه البيع بأقل من التكلفة أو بربح ضعيف ====== */
+const LOW_MARGIN_PCT=5;
+function saleMarginWarn(){
+  if(!S.cart.length)return [];
+  const T=tot(),ratio=T>0?(T-discAmt())/T:1,out=[];
+  S.cart.forEach(i=>{
+    if(i.free)return;
+    const p=S.prods.find(x=>x.id===i.id);if(!p)return;
+    const cost=+p.avg_cost||0;if(!(cost>0))return;
+    const f=i.f||1,pbSyp=(+i.price/f)*rate(S.cur)*ratio;
+    if(!(pbSyp>0))return;
+    const m=Math.round((pbSyp-cost)/pbSyp*1000)/10;
+    if(pbSyp<cost)out.push('• '+p.name+': بيع بخسارة ('+fmt(m)+'%)');
+    else if(m<LOW_MARGIN_PCT)out.push('• '+p.name+': ربح ضعيف ('+fmt(m)+'%)');
+  });
+  return out;
 }
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
