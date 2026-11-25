@@ -734,7 +734,7 @@ async function currencyV(){
   const {data,error}=await db.from('shop_currencies').select('*').eq('shop_id',S.shop.id).order('code');
   if(!error&&data){S.currencies=data.filter(x=>x.is_active!==false);const u=S.currencies.find(x=>x.code==='USD');if(u)u.rate_to_syp=+S.shop.usd_rate||u.rate_to_syp}
   const L=curRows();
-  $('#v').innerHTML=`<div class=card><div class=sec-h><b>${ic('dollar',18)} إدارة العملات وأسعار الصرف</b><button class="b s" onclick="currencyForm()">+ إضافة عملة</button></div>
+  $('#v').innerHTML=`${usdPriceCard()}<div class=card><div class=sec-h><b>${ic('dollar',18)} إدارة العملات وأسعار الصرف</b><button class="b s" onclick="currencyForm()">+ إضافة عملة</button></div>
   <div class=m>سعر الصرف هنا هو قيمة وحدة العملة مقابل الليرة السورية. العملة الأساسية في الدفاتر ما زالت الليرة، وفواتير القبض والبيع الحالية تدعم الليرة والدولار.</div>
   ${error?'<div class="note card bad">تعذّر تحميل جدول العملات. نفّذ ملف التحديث SQL المرفق أولاً.</div>':''}
   ${L.map(c=>`<div class=it><span><b>${esc(c.name)}</b><br><span class=m>${esc(c.code)} · ${c.code==='SYP'?'عملة الأساس':c.code==='USD'?'تُحدّث من سعر الدولار أعلى النظام':'سعر الوحدة بالليرة'}</span></span><span style="text-align:end"><b>${fmt(c.code==='USD'?S.shop.usd_rate:c.rate_to_syp)}</b><br>${c.code==='SYP'?'<span class=m>ثابتة</span>':`<button class="b s" style="padding:5px 9px" onclick="currencyEdit('${esc(c.id||c.code)}')">تعديل</button> ${c.code==='USD'?'':`<button class="b s neg" style="padding:5px 9px" onclick="currencyDisable('${esc(c.id)}')">تعطيل</button>`}`}</span></div>`).join('')}
@@ -3700,6 +3700,38 @@ async function voiceNote(){
   };
   VR={stop:()=>{if(rec.state!=='inactive')rec.stop()},cancel:()=>{cancelled=true;if(rec.state!=='inactive')rec.stop()}};
   rec.start();
+}
+
+/* ====== التسعير التلقائي بالدولار ====== */
+function usdPriceCard(){
+  if(S.role!=='owner')return '';
+  const n=(S.prods||[]).filter(p=>p.active!==false&&(p.sale_currency||'SYP')!=='USD').length;
+  return `<div class=card><b>تسعير المواد بالدولار</b>
+    <div class=m>المواد المسعّرة بالليرة: <b>${n}</b>. المواد المسعّرة بالدولار تتغير أسعارها بالليرة تلقائياً مع كل تغيير لسعر الصرف.</div>
+    ${n?`<button class=b style="width:100%;margin-top:8px" onclick="toUsdPrices()">تحويل ${n} مادة إلى التسعير بالدولار</button>`:'<div class=m style="margin-top:6px">كل المواد مسعّرة بالدولار ✓</div>'}</div>`;
+}
+async function toUsdPrices(){
+  if(S.role!=='owner')return toast('للمالك فقط');
+  const rate=+S.shop.usd_rate;
+  if(!(rate>0))return toast('سعر الدولار غير صالح');
+  const list=(S.prods||[]).filter(p=>p.active!==false&&(p.sale_currency||'SYP')!=='USD');
+  if(!list.length)return toast('لا توجد مواد للتحويل');
+  if(!await ok('تحويل الأسعار إلى الدولار',{msg:'سيتم تحويل أسعار '+list.length+' مادة إلى الدولار بسعر الصرف الحالي ('+fmt(rate)+' ل.س). بعدها تتغير أسعار الليرة تلقائياً مع سعر الصرف. هل تريد المتابعة؟',icon:'alert',yes:'تحويل'}))return;
+  const r2=v=>(v==null||v==='')?null:Math.round((+v/rate)*100)/100;
+  let fail=0;
+  for(const p of list){
+    const {error}=await db.from('products').update({
+      sale_currency:'USD',
+      sale_price:r2(p.sale_price)||0,
+      retail_price:r2(p.retail_price),
+      semi_wholesale_price:r2(p.semi_wholesale_price),
+      wholesale_price:r2(p.wholesale_price)
+    }).eq('id',p.id);
+    if(error)fail++;
+  }
+  await refresh();
+  toast(fail?('تم التحويل مع فشل '+fail+' مادة'):'تم تحويل الأسعار إلى الدولار ✓');
+  currencyV();
 }
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
