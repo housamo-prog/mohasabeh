@@ -3465,6 +3465,66 @@ async function askBuyPrices(){
   for(const c of ch){await db.from('products').update({buy_price:c.newBuy}).eq('id',c.p.id)}
   toast('تم تحديث سعر الشراء ✓');
 }
+
+/* ====== الدفعة 4: عرض سندات القيد وتفاصيلها وتعديلها وإلغاؤها ====== */
+async function accList(){
+  if(!S.ac||!S.ac.length){
+    const {data,error}=await db.from('trial_balance').select('*').order('code');
+    if(error){toast(error.message);return false}
+    S.ac=data||[];
+  }
+  return true;
+}
+async function jvLoad(){
+  const {data,error}=await db.rpc('recent_vouchers',{p_shop:S.shop.id,p_types:['voucher']});
+  const el=$('#jvl');if(!el)return;
+  if(error){el.innerHTML='<div class=m>'+esc(error.message)+'</div>';return}
+  S.jv=data||[];
+  el.innerHTML=S.jv.length?S.jv.map((v,k)=>`<div class=it><span>${v.entry_date}<br><span class=m>${esc(v.description||'')}</span></span><span style="text-align:end"><b class="${v.voided?'strike neg':''}">${fmt(v.amount)}</b> ${esc(v.currency||'SYP')}${v.voided?'<br><span class=m>ملغى</span>':`<br><button class="b s" style="padding:4px 10px" onclick="jvView(${k})">تفاصيل</button> <button class="b s" style="padding:4px 10px" onclick="editVoucher('${v.id}')">تعديل</button> <button class="b s neg" style="padding:4px 10px" onclick="voidV('${v.id}')">إلغاء</button>`}</span></div>`).join(''):'<div class=m>لا توجد سندات قيد بعد</div>';
+}
+async function jvView(k){
+  const v=S.jv[k];if(!v)return;
+  const L=await linesOf(v.id);if(!L)return;
+  const txt=L.map(x=>(x.accounts?x.accounts.code+' '+x.accounts.name:'')+' '+(+x.debit>0?'مدين '+fmt(x.debit):'دائن '+fmt(x.credit))).join(' | ');
+  say('تفاصيل سند القيد',{msg:v.entry_date+' · '+(v.description||'')+' — '+txt});
+}
+async function linesOf(id){
+  const {data,error}=await db.from('journal_lines').select('account_id,debit,credit,accounts(code,name)').eq('entry_id',id);
+  if(error){toast(error.message);return null}
+  return data||[];
+}
+async function editVoucher(id){
+  if(!can('accounts'))return toast('تعديل السندات للمالك أو من له صلاحية الحسابات');
+  const lines=await linesOf(id);if(!lines)return;
+  const dr=lines.find(x=>+x.debit>0),cr=lines.find(x=>+x.credit>0);
+  if(!dr||!cr)return toast('تعذّر قراءة قيود السند');
+  if(!await accList())return;
+  const {data:ed}=await db.from('journal_entries').select('*').eq('id',id);
+  const ent=(S.jv||[]).find(x=>x.id==id)||{};
+  const e=(ed&&ed[0])||{};
+  const cur=e.currency||ent.currency||'SYP';
+  const amt=cur==='USD'?(e.foreign_amount||ent.foreign_amount||+dr.debit):(+dr.debit);
+  const opts=sel=>S.ac.filter(a=>!a.is_group||a.id==sel).map(a=>`<option value="${a.id}" ${a.id==sel?'selected':''}>${esc(a.code)} ${esc(a.name)}</option>`).join('');
+  $('#v').innerHTML=`<div class=card><b>تعديل سند القيد</b>
+    <div class=m>سيُلغى السند الأصلي بقيد عكسي، ثم يُسجَّل السند بالبيانات المعدّلة. يبقى الأصلي ظاهراً في السجل.</div>
+    <div class=m>الحساب المدين (المستفيد / المصروف)</div><select id=ed>${opts(dr.account_id)}</select>
+    <div class=m>الحساب الدائن (المصدر)</div><select id=ec2>${opts(cr.account_id)}</select>
+    <div class=row><input id=ea type=number inputmode=decimal value="${amt}"><select id=ecu><option ${cur=='SYP'?'selected':''}>SYP<option ${cur=='USD'?'selected':''}>USD</select></div>
+    <input id=en placeholder="البيان" value="${esc(e.description||ent.description||'')}">
+    <div class=row><button class="b s" onclick="go('vch')">رجوع</button><button class=b onclick="saveEditVoucher('${id}')">حفظ التعديل</button></div></div>`;
+}
+async function saveEditVoucher(id){
+  const d=$('#ed').value,c=$('#ec2').value,a=+$('#ea').value,cu=$('#ecu').value,n=$('#en').value.trim();
+  if(!d||!c||!(a>0))return toast('أكمل البيانات بقيم صحيحة');
+  if(d==c)return toast('الحساب المدين والدائن لا يجوز أن يكونا واحداً');
+  if(!await ok('حفظ تعديل السند؟',{msg:'سيُلغى السند الأصلي بقيد عكسي، ويُسجَّل السند المعدّل بتاريخ اليوم.',yes:'حفظ التعديل',icon:'alert'}))return;
+  const r1=await call('void_voucher',{p_shop:S.shop.id,p_entry:id});
+  if(r1===undefined)return;
+  const r2=await call('post_voucher',{p_shop:S.shop.id,p_client:uid(),p_debit:d,p_credit:c,p_amount:a,p_currency:cu,p_rate:rate(cu),p_desc:n});
+  if(r2===undefined){toast('أُلغي السند الأصلي لكن تعذّر تسجيل المعدّل، أعد إدخاله من شاشة القيد');return vchV()}
+  toast('تم تعديل السند ✓');
+  vchV();
+}
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -3883,6 +3943,7 @@ async function vchV(){
   <select id=vk onchange="vchForm()"><option value=expense>مصروف<option value=exchange>تصريف دولار<option value=receipt>سند قبض</select>
   <div id=vf></div></div>
   ${can('accounts')?`<div class=card><div class=row><button class="b s" onclick="equity('deposit')">+ رأس مال</button><button class="b s" onclick="equity('withdraw')">سحب المالك</button></div></div>`:''}
+  <div class=card><button class="b s" style="width:100%" onclick="jvLoad()">عرض كل سندات القيد</button><div id=jvl></div></div>
   <div class=card id=vl2><div class=m>جارٍ التحميل...</div></div>`;
   vchForm();vchLoad()
 }
