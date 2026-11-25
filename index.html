@@ -3658,7 +3658,9 @@ async function wizSaveRate(){
   onbCheck();
 }
 async function saveVoice(dataUrl){
-  const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:uid(),title:'ملاحظة صوتية · '+new Date().toLocaleString('ar',{timeZone:'Asia/Damascus'}),audio:dataUrl,is_done:false});
+  const {data:au}=await db.auth.getUser();
+  if(!au||!au.user)return toast('سجّل الدخول مرة أخرى ثم أعد المحاولة');
+  const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:au.user.id,title:'ملاحظة صوتية · '+new Date().toLocaleString('ar',{timeZone:'Asia/Damascus'}),audio:dataUrl,is_done:false});
   if(error)return toast(error.message);
   toast('تم حفظ الملاحظة الصوتية ✓');
   memoV();
