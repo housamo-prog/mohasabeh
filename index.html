@@ -1117,9 +1117,9 @@ async function memoV(){
   const {data,error}=await db.from('shop_notes').select('*').eq('shop_id',S.shop.id).order('is_done').order('due_date',{ascending:true}).order('created_at',{ascending:false});
   if(error){$('#v').innerHTML=`<div class=card><b>المفكرة</b><div class="note bad card">تعذّر تحميل المفكرة. نفّذ ملف التحديث SQL المرفق أولاً.<br>${esc(error.message)}</div></div>`;return}
   S.notes=data||[];
-  $('#v').innerHTML=`<div class=card><div class=sec-h><b>${ic('memo',18)} مفكرتي ومهامي</b><button class=b onclick="memoForm()">+ ملاحظة</button></div>
+  $('#v').innerHTML=`<div class=card><div class=sec-h><b>${ic('memo',18)} مفكرتي ومهامي</b><button class=b onclick="memoForm()">+ ملاحظة</button><button class="b s" onclick="voiceNote()">تسجيل صوتي</button></div>
   <div class=m>سجّل الملاحظات والتذكيرات ومواعيد المتابعة. كل مستخدم يرى ملاحظاته الخاصة ضمن المحل.</div>
-  ${S.notes.length?S.notes.map(n=>`<div class=it style="align-items:flex-start;gap:12px"><label style="display:flex;align-items:flex-start;gap:8px;flex:1;margin:0"><input type=checkbox ${n.is_done?'checked':''} onchange="memoToggle('${n.id}',this.checked)" style="margin-top:6px"><span style="min-width:0"><b style="${n.is_done?'text-decoration:line-through;color:var(--m)':''}">${esc(n.title)}</b>${n.body?`<div class=m style="white-space:pre-wrap">${esc(n.body)}</div>`:''}<span class=m>${n.due_date?'موعد: '+esc(n.due_date)+' · ':''}${n.is_done?'منجزة':'قيد المتابعة'}</span></span></label><span style="display:flex;gap:5px"><button class="b s" style="padding:5px 8px" onclick="memoForm('${n.id}')">تعديل</button><button class="b s neg" style="padding:5px 8px" onclick="memoDelete('${n.id}')">حذف</button></span></div>`).join(''):'<div class=empty>المفكرة فارغة. أضف أول ملاحظة أو مهمة.</div>'}
+  ${S.notes.length?S.notes.map(n=>`<div class=it style="align-items:flex-start;gap:12px"><label style="display:flex;align-items:flex-start;gap:8px;flex:1;margin:0"><input type=checkbox ${n.is_done?'checked':''} onchange="memoToggle('${n.id}',this.checked)" style="margin-top:6px"><span style="min-width:0"><b style="${n.is_done?'text-decoration:line-through;color:var(--m)':''}">${esc(n.title)}</b>${n.body?`<div class=m style="white-space:pre-wrap">${esc(n.body)}</div>`:''}${n.audio?`<audio controls src="${n.audio}" style="width:100%;margin-top:6px"></audio>`:''}<span class=m>${n.due_date?'موعد: '+esc(n.due_date)+' · ':''}${n.is_done?'منجزة':'قيد المتابعة'}</span></span></label><span style="display:flex;gap:5px"><button class="b s" style="padding:5px 8px" onclick="memoForm('${n.id}')">تعديل</button><button class="b s neg" style="padding:5px 8px" onclick="memoDelete('${n.id}')">حذف</button></span></div>`).join(''):'<div class=empty>المفكرة فارغة. أضف أول ملاحظة أو مهمة.</div>'}
   </div>`
 }
 async function memoForm(...args){return runMutationOnce('memoForm',()=>_once_memoForm(...args))}
@@ -3597,6 +3597,111 @@ function refreshRetRem(){
     el.textContent='المتبقي للإرجاع: '+fmt(i.remaining/f)+' '+n;
   });
 }
+
+/* ====== الدفعة 7: معالج بداية المحل والملاحظات الصوتية ====== */
+let VR=null;
+function onbCheck(){
+  if(!S||!S.shop||S.role!=='owner')return;
+  if(localStorage.getItem('wisam_wiz_done')||document.getElementById('onb'))return;
+  if(S.tab!=='home')return;
+  const steps=[
+    {k:'info',t:'معلومات المحل',d:'تظهر في الفواتير والطباعة',ok:!!localStorage.getItem('wisam_wiz_info')},
+    {k:'rate',t:'سعر الدولار',d:'السعر الحالي بالليرة',ok:!!localStorage.getItem('wisam_wiz_rate')},
+    {k:'prod',t:'أول مادة',d:'أضف المواد التي تبيعها',ok:(S.prods||[]).length>0},
+    {k:'party',t:'أول زبون أو مورد',d:'لتسجيل البيع الآجل والشراء',ok:(S.parts||[]).length>0}
+  ];
+  const doneAll=steps.every(s=>s.ok);
+  const rows=steps.map((s,i)=>{
+    let act='';
+    if(!s.ok){
+      if(s.k==='info')act=`<input id=wzA placeholder="عنوان المحل"><input id=wzP placeholder="أرقام الهاتف"><input id=wzN placeholder="نص أسفل الفاتورة (اختياري)"><button class=b style="width:100%;margin-top:6px" onclick="wizSaveInfo()">حفظ</button>`;
+      else if(s.k==='rate')act=`<input id=wzR type=number inputmode=decimal dir=ltr value="${S.shop.usd_rate||''}" placeholder="سعر الدولار"><button class=b style="width:100%;margin-top:6px" onclick="wizSaveRate()">حفظ</button>`;
+      else if(s.k==='prod')act=`<button class="b s" style="width:100%" onclick="onbGo('prod')">فتح شاشة المنتجات</button>`;
+      else if(s.k==='party')act=`<button class="b s" style="width:100%" onclick="onbGo('debt')">فتح الديون والأطراف</button>`;
+      else act=`<button class="b s" style="width:100%" onclick="onbGo('bkp')">فتح النسخ الاحتياطي</button>`;
+    }
+    return `<div style="border:1px solid #2a2f38;border-radius:12px;padding:10px;margin:8px 0"><div style="display:flex;align-items:center;gap:8px"><span style="width:26px;height:26px;border-radius:50%;background:${s.ok?'#16a34a':'#2a2f38'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${s.ok?'✓':i+1}</span><div><b>${s.t}</b><div class=m>${s.d}</div></div></div>${act?'<div style="margin-top:8px">'+act+'</div>':''}</div>`;
+  }).join('');
+  const d=document.createElement('div');
+  d.id='onb';
+  d.style.cssText='position:fixed;inset:0;z-index:9400;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box';
+  d.innerHTML='<div style="width:100%;max-width:460px;max-height:92vh;overflow:auto;background:var(--card,#171b21);color:inherit;border-radius:16px;padding:16px;box-sizing:border-box">'+
+    '<div style="font-size:18px;font-weight:700">إعداد البرنامج</div>'+
+    '<div class=m style="margin-bottom:6px">'+(doneAll?'تم إكمال كل الخطوات الأساسية.':'أكمل هذه الخطوات لتبدأ العمل بشكل صحيح.')+'</div>'+rows+
+    (doneAll?'<button class=b style="width:100%;margin-top:10px" onclick="wizFinish(false)">إنهاء الإعداد</button>':'<button class="b s" style="width:100%;margin-top:10px" onclick="wizFinish(true)">تخطّي الآن</button>')+
+    '</div>';
+  document.body.appendChild(d);
+}
+function onbClose(){localStorage.setItem('wisam_onb','1');const d=document.getElementById('onb');if(d)d.remove()}
+function onbGo(k){onbClose();go(k)}
+function wizFinish(skip){
+  localStorage.setItem('wisam_wiz_done','1');
+  const d=document.getElementById('onb');if(d)d.remove();
+  toast(skip?'يمكنك إكمال الإعداد لاحقاً من الدليل':'تم إعداد البرنامج ✓');
+}
+async function wizSaveInfo(){
+  const a=(document.getElementById('wzA').value||'').trim(),ph=(document.getElementById('wzP').value||'').trim(),n=(document.getElementById('wzN').value||'').trim();
+  const r=await db.rpc('set_shop_info',{p_shop:S.shop.id,p_address:a||null,p_phones:ph||null,p_note:n||null});
+  if(r.error)return toast(r.error.message);
+  localStorage.setItem('wisam_wiz_info','1');
+  toast('تم حفظ معلومات المحل ✓');
+  onbCheck();
+}
+async function wizSaveRate(){
+  const v=+document.getElementById('wzR').value;
+  if(!(v>0))return toast('أدخل سعراً صحيحاً');
+  const r=await db.rpc('set_usd_rate',{p_shop:S.shop.id,p_rate:v});
+  if(r.error)return toast(r.error.message);
+  localStorage.setItem('wisam_wiz_rate','1');
+  await refresh();
+  toast('تم حفظ سعر الدولار ✓');
+  onbCheck();
+}
+async function saveVoice(dataUrl){
+  const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:uid(),title:'ملاحظة صوتية · '+new Date().toLocaleString('ar',{timeZone:'Asia/Damascus'}),audio:dataUrl,is_done:false});
+  if(error)return toast(error.message);
+  toast('تم حفظ الملاحظة الصوتية ✓');
+  memoV();
+}
+async function voiceNote(){
+  if(VR){VR.stop();return}
+  if(!navigator.mediaDevices||typeof MediaRecorder==='undefined')return toast('التسجيل الصوتي غير متاح في هذا الجهاز');
+  let stream=null,err=null;
+  for(let k=0;k<2&&!stream;k++){
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+    catch(e){err=e;if(!(e&&e.name==='NotReadableError'))break;await new Promise(r=>setTimeout(r,800))}
+  }
+  if(!stream)return toast('تعذّر تشغيل الميكروفون ('+((err&&err.name)||'')+'). أغلق التطبيقات التي تستخدم الميكروفون (واتساب، المسجّل، المساعد الصوتي) وأعد المحاولة');
+  const chunks=[];let cancelled=false;
+  const rec=new MediaRecorder(stream);
+  const t0=Date.now();
+  const bar=document.createElement('div');
+  bar.id='vrec';
+  bar.style.cssText='position:fixed;left:12px;right:12px;bottom:76px;z-index:9300;background:#171b21;color:#fff;border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+  bar.innerHTML='<span style="color:#f87171">●</span><span id=vrt style="flex:1">00:00</span><button class=b style="padding:8px 12px" onclick="VR&&VR.stop()">إيقاف وحفظ</button><button class="b s" style="padding:8px 12px" onclick="VR&&VR.cancel()">إلغاء</button>';
+  document.body.appendChild(bar);
+  const tick=setInterval(()=>{
+    const s=Math.floor((Date.now()-t0)/1000);
+    const el=document.getElementById('vrt');
+    if(el)el.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+    if(s>=300&&VR)VR.stop();
+  },500);
+  const cleanup=()=>{clearInterval(tick);stream.getTracks().forEach(t=>t.stop());const b=document.getElementById('vrec');if(b)b.remove();VR=null};
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  rec.onstop=async()=>{
+    const wasCancelled=cancelled;
+    cleanup();
+    if(wasCancelled||!chunks.length)return;
+    const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
+    const dataUrl=await new Promise(ok=>{const r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(blob)});
+    const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:uid(),title:'ملاحظة صوتية · '+new Date().toLocaleString('ar',{timeZone:'Asia/Damascus'}),audio:dataUrl,is_done:false});
+    if(error)return toast(error.message);
+    toast('تم حفظ الملاحظة الصوتية ✓');
+    memoV();
+  };
+  VR={stop:()=>{if(rec.state!=='inactive')rec.stop()},cancel:()=>{cancelled=true;if(rec.state!=='inactive')rec.stop()}};
+  rec.start();
+}
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -4207,6 +4312,13 @@ if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWor
     if(typeof orig!=='function')return;
     window[name]=function(){const r=orig.apply(this,arguments);setTimeout(initStockUnits,0);return r};
   });
+})();
+</script>
+
+<script>
+(function(){
+  const __shellOnb=shell;
+  shell=function(){__shellOnb.apply(this,arguments);try{onbCheck()}catch(e){}};
 })();
 </script>
 </body>
