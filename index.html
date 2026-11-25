@@ -3696,10 +3696,7 @@ async function voiceNote(){
     if(wasCancelled||!chunks.length)return;
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
     const dataUrl=await new Promise(ok=>{const r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(blob)});
-    const {error}=await db.from('shop_notes').insert({shop_id:S.shop.id,user_id:uid(),title:'ملاحظة صوتية · '+new Date().toLocaleString('ar',{timeZone:'Asia/Damascus'}),audio:dataUrl,is_done:false});
-    if(error)return toast(error.message);
-    toast('تم حفظ الملاحظة الصوتية ✓');
-    memoV();
+    await saveVoice(dataUrl);
   };
   VR={stop:()=>{if(rec.state!=='inactive')rec.stop()},cancel:()=>{cancelled=true;if(rec.state!=='inactive')rec.stop()}};
   rec.start();
