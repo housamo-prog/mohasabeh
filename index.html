@@ -1012,9 +1012,12 @@ function stockList(){
 }
 async function adjust(...args){return runMutationOnce('adjust',()=>_once_adjust(...args))}
 async function _once_adjust(id){
-  const p=S.prods.find(x=>x.id==id),cur=lvl(id,S.wh),v=await ask('جرد: '+p.name,cur,{msg:'الكمية الفعلية بهذا المستودع (المسجّل بالنظام: '+fmt(cur)+')',num:true,icon:'stock',yes:'حفظ'});
+  const p=S.prods.find(x=>x.id==id),cur=lvl(id,S.wh);
+  const f=await pickFactor(id);if(f===null)return;
+  const shown=round(cur/f,4);
+  const v=await ask('جرد: '+p.name,shown,{msg:'الكمية الفعلية بهذا المستودع بالوحدة المختارة (المسجّل بالنظام: '+fmt(shown)+')',num:true,icon:'stock',yes:'حفظ'});
   if(v===null||v===''||isNaN(+v)||+v<0)return;
-  const r=await call('post_stock_adjust_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:+v,p_reason:'جرد'});
+  const r=await call('post_stock_adjust_wh',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_new_qty:round(+v*f),p_reason:'جرد'});
   if(r!==undefined){await refresh();toast('تمت التسوية ✓');stockV()}
 }
 async function addWh(...args){return runMutationOnce('addWh',()=>_once_addWh(...args))}
@@ -1025,7 +1028,7 @@ async function _once_addWh(){
 }
 async function doTransfer(...args){return runMutationOnce('doTransfer',()=>_once_doTransfer(...args))}
 async function _once_doTransfer(){
-  const q=+$('#tq').value;if(!(q>0))return toast('أدخل الكمية');
+  const q=qBase($('#tq'));if(!(q>0))return toast('أدخل الكمية');
   const r=await call('transfer_stock',{p_shop:S.shop.id,p_client:uid(),p_product:$('#tp').value,p_from:$('#tf').value,p_to:$('#tt').value,p_qty:q});
   if(r!==undefined){await refresh();toast('تم التحويل ✓');stockV()}
 }
@@ -1415,7 +1418,7 @@ function mfgV(){
   prodList()
 }
 function mfgPrev(){
-  const id=$('#mp').value,q=+$('#mq').value||0,x=+$('#mx').value||0;
+  const id=$('#mp').value,q=qBase($('#mq'))||0,x=+$('#mx').value||0;
   let mat=0;
   const rows=S.bom.filter(b=>b.product_id==id).map(b=>{
     const p=S.prods.find(z=>z.id==b.component_id)||{},n=+b.qty*q,have=lvl(b.component_id,S.wh);
@@ -1437,7 +1440,7 @@ async function _once_voidProd(id){
 }
 async function doProd(...args){return runMutationOnce('doProd',()=>_once_doProd(...args))}
 async function _once_doProd(){
-  const id=$('#mp').value,q=+$('#mq').value;
+  const id=$('#mp').value,q=qBase($('#mq'));
   if(!id||!(q>0))return toast('اختر المنتج وأدخل الكمية');
   const r=await call('post_production',{p_wh:S.wh,p_shop:S.shop.id,p_client:uid(),p_product:id,p_qty:q,p_extra:+$('#mx').value||0});
   if(r!==undefined){await refresh();toast('تم التصنيع ✓');mfgV()}
@@ -1449,7 +1452,7 @@ function rcpDraw(){
   $('#rc').innerHTML=S.rc.map((x,k)=>`<div class=it><span>${esc(pname(x.id))}</span><span>${fmt(x.qty)} <button class="b s" style="padding:4px 10px" onclick="S.rc.splice(${k},1);rcpDraw()">✕</button></span></div>`).join('')||'<div class=m>لا مكونات بعد</div>'
 }
 function rcpAdd(){
-  const id=$('#rcs').value,q=+$('#rcq').value;
+  const id=$('#rcs').value,q=qBase($('#rcq'));
   if(!(q>0))return toast('أدخل الكمية');
   if(id==$('#rp').value)return toast('المنتج لا يكون مكوّناً لنفسه');
   const e=S.rc.find(x=>x.id==id);e?e.qty+=q:S.rc.push({id,qty:q});
@@ -2339,7 +2342,7 @@ function expMis(){
 }
 async function lotAddFor(...a){return runMutationOnce('lotAdd',()=>_once_lotAddFor(...a))}
 async function _once_lotAddFor(pid){
-  const d=$('#ld_'+pid).value,q=+toEn($('#lq_'+pid).value);
+  const d=$('#ld_'+pid).value,q=qBase($('#lq_'+pid));
   if(!d)return toast('اختر تاريخ الصلاحية');
   if(!(q>0))return toast('أدخل كمية صحيحة');
   if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
@@ -2356,10 +2359,11 @@ async function lotSet(...a){return runMutationOnce('lotSet',()=>_once_lotSet(...
 async function _once_lotSet(id){
   const l=(S.lots||[]).find(x=>x.id==id);if(!l)return;
   const p=S.prods.find(x=>x.id==l.product_id)||{};
+  const lot=(S.lots||[]).find(x=>x.id==id);const lf=await pickFactor(lot?lot.product_id:null);if(lf===null)return;
   const v=await ask('كمية الدفعة: '+p.name,l.qty_remaining,{msg:'الكمية الفعلية المتبقية من هذه الدفعة ('+l.expiry_date+'). هذا يعدّل سجل الدفعة فقط ولا يغيّر مخزون المادة.',num:true,icon:'stock',yes:'حفظ'});
   if(v===null||v===''||isNaN(+v)||+v<0)return;
   if(!navigator.onLine)return toast('هذه العملية تحتاج اتصالاً بالإنترنت');
-  const r=await call('lot_adjust',{p_shop:S.shop.id,p_lot:id,p_new_qty:+v});
+  const r=await call('lot_adjust',{p_shop:S.shop.id,p_lot:id,p_new_qty:round(+v*lf)});
   if(r!==undefined){await refresh();toast('تم التعديل ✓');expiryV()}
 }
 async function lotDispose(...a){return runMutationOnce('lotDispose',()=>_once_lotDispose(...a))}
@@ -3525,6 +3529,74 @@ async function saveEditVoucher(id){
   toast('تم تعديل السند ✓');
   vchV();
 }
+
+/* ====== الدفعة 6: اختيار الوحدة في المرتجع والجرد والتحويل والتصنيع والدفعات ====== */
+function pickFactor(pid){
+  const pu=S.units[pid]||[];
+  const base=(S.prods.find(x=>x.id==pid)||{}).unit||'قطعة';
+  if(!pu.length)return Promise.resolve(1);
+  return new Promise(res=>{
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;inset:0;z-index:9700;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box';
+    d.innerHTML='<div style="width:100%;max-width:420px;background:var(--card,#171b21);color:inherit;border-radius:16px;padding:16px;box-sizing:border-box"><div style="font-weight:700;margin-bottom:8px">اختر الوحدة</div>'+
+      '<button class=b style="width:100%;margin:4px 0" data-f="1">'+esc(base)+'</button>'+
+      pu.map(u=>'<button class="b s" style="width:100%;margin:4px 0" data-f="'+u.factor+'">'+esc(u.name)+' ('+fmt(u.factor)+' '+esc(base)+')</button>').join('')+
+      '<button class="b s" style="width:100%;margin-top:8px" data-f="">إلغاء</button></div>';
+    d.onclick=e=>{const b=e.target.closest('button');if(!b)return;d.remove();res(b.dataset.f===''?null:Number(b.dataset.f))};
+    document.body.appendChild(d);
+  });
+}
+function qBase(inp){
+  const sel=document.getElementById(inp.id+'_u');
+  const f=Number(sel?.value)||1;
+  return round(Number(toEn(inp.value))*f);
+}
+function attachUnit(inp,pid){
+  if(!inp)return null;
+  let sel=document.getElementById(inp.id+'_u');
+  if(!sel){sel=document.createElement('select');sel.id=inp.id+'_u';sel.style.cssText='min-width:96px;margin-inline-start:6px';inp.insertAdjacentElement('afterend',sel)}
+  const base=(S.prods.find(x=>x.id==pid)||{}).unit||'قطعة';
+  const pu=pid?(S.units[pid]||[]):[];
+  sel.innerHTML='<option value="1">'+esc(base)+'</option>'+pu.map(u=>'<option value="'+u.factor+'">'+esc(u.name)+'</option>').join('');
+  return sel;
+}
+function initStockUnits(){
+  const tq=document.getElementById('tq'),tp=document.getElementById('tp');
+  if(tq&&tp){attachUnit(tq,tp.value);tp.onchange=()=>attachUnit(tq,tp.value)}
+  const mq=document.getElementById('mq'),mp=document.getElementById('mp');
+  if(mq&&mp){attachUnit(mq,mp.value);mp.onchange=()=>{attachUnit(mq,mp.value);if(typeof mfgPrev==='function')mfgPrev()}}
+  const rq=document.getElementById('rcq'),rs=document.getElementById('rcs');
+  if(rq&&rs){attachUnit(rq,rs.value);rs.onchange=()=>attachUnit(rq,rs.value)}
+  document.querySelectorAll('[id^="lq_"]').forEach(inp=>attachUnit(inp,inp.id.slice(3)));
+}
+function retUnitsInit(){
+  if(!S.returnDraft)return;
+  S.returnDraft.lines.forEach((i,j)=>{
+    const inp=document.getElementById('retq'+j);if(!inp)return;
+    const base=(S.prods.find(x=>x.id==i.product_id)||{}).unit||'قطعة';
+    const pu=S.units[i.product_id]||[];
+    const sel=document.createElement('select');
+    sel.id='retu'+j;sel.onchange=()=>returnCalc();sel.disabled=i.remaining<=0;
+    sel.innerHTML='<option value="1" data-n="'+esc(base)+'">'+esc(base)+'</option>'+
+      pu.map(u=>'<option value="'+u.factor+'" data-n="'+esc(u.name)+'">'+esc(u.name)+' ('+fmt(u.factor)+' '+esc(base)+')</option>').join('');
+    const row=document.createElement('div');row.className='row';
+    inp.parentNode.insertBefore(row,inp);
+    inp.style.flex='1';row.appendChild(inp);row.appendChild(sel);
+    const hint=document.createElement('div');hint.className='m';hint.id='retr'+j;
+    row.parentNode.insertBefore(hint,row.nextSibling);
+  });
+  refreshRetRem();
+}
+function refreshRetRem(){
+  if(!S.returnDraft)return;
+  S.returnDraft.lines.forEach((i,j)=>{
+    const el=document.getElementById('retr'+j);if(!el)return;
+    const sel=document.getElementById('retu'+j);
+    const f=Number(sel?.value)||1;
+    const n=sel?.selectedOptions?.[0]?.dataset?.n||'';
+    el.textContent='المتبقي للإرجاع: '+fmt(i.remaining/f)+' '+n;
+  });
+}
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -4056,12 +4128,13 @@ async function returnForm(k){return runMutationOnce('returnForm',async()=>{
  <label for=returnDate>تاريخ المرتجع</label><input id=returnDate type=date value="${today()}"><label for=returnNote>البيان</label><input id=returnNote maxlength=500>
  <div class=row><button class=b onclick="returnSave()">حفظ المرتجع</button><button class="b s" onclick="returnsList()">قائمة المرتجعات</button><button class="b s" onclick="histV()">رجوع</button></div>
  <p class=m>مستند مستقل لا يلغي الفاتورة. لا يتوفر تعديل أو إلغاء المرتجع في هذه النسخة؛ راجع الكميات والمبلغ قبل التأكيد.</p></div>`;
- returnCalc();
+ retUnitsInit();
+  returnCalc();
 })}
 function returnValues(){
  const d=S.returnDraft;if(!d)throw Error('افتح نموذج المرتجع أولاً');let gross=0;
  const round=n=>Math.round((n+Number.EPSILON)*10000)/10000;
- const items=d.lines.flatMap((i,j)=>{const q=Number(toEn($('#retq'+j).value));if(!Number.isFinite(q)||q<0||q>i.remaining+1e-9)throw Error('كمية غير صالحة في أحد البنود');if(!q)return [];
+ const items=d.lines.flatMap((i,j)=>{const q0=Number(toEn($('#retq'+j).value));if(!Number.isFinite(q0)||q0<0)throw Error('كمية غير صالحة في أحد البنود');const f=Number($('#retu'+j)?.value)||1;const q=round(q0*f);if(q>i.remaining+1e-9)throw Error('الكمية تتجاوز المتبقي للإرجاع في أحد البنود');if(!q)return [];
   const orig=round(Number(i.qty)*i.unit);gross+=round(orig*(i.prev+q)/Number(i.qty))-round(orig*i.prev/Number(i.qty));return [{item_id:i.id,qty:q}]});
  gross=round(gross);
  // حصة المرتجع من حسم الفاتورة (تراكمية على مستوى الفاتورة، كما يحسبها الخادم)
@@ -4072,7 +4145,7 @@ function returnValues(){
  }
  return {items,total:round(gross-disc),gross,disc};
 }
-function returnCalc(){try{const v=returnValues(),cu=S.returnDraft.invoice.currency;$('#returnTotal').textContent='إجمالي المرتجع: '+fmt(v.total)+' '+cu+(v.disc>0?' (قبل الحسم '+fmt(v.gross)+' − حصة الحسم '+fmt(v.disc)+')':'');if(!S.returnDraft.invoice.partner_id)$('#returnCash').value=v.total}catch(e){$('#returnTotal').textContent=e.message}}
+function returnCalc(){try{refreshRetRem();const v=returnValues(),cu=S.returnDraft.invoice.currency;$('#returnTotal').textContent='إجمالي المرتجع: '+fmt(v.total)+' '+cu+(v.disc>0?' (قبل الحسم '+fmt(v.gross)+' − حصة الحسم '+fmt(v.disc)+')':'');if(!S.returnDraft.invoice.partner_id)$('#returnCash').value=v.total}catch(e){$('#returnTotal').textContent=e.message}}
 async function returnSave(){return runMutationOnce('returnSave',async()=>{
  if(returnPending())return toast('يوجد طلب معلق؛ أعد إرساله من قائمة المرتجعات');
  const d=S.returnDraft,v=returnValues(),cash=Number(toEn($('#returnCash').value)),date=$('#returnDate').value;
@@ -4126,5 +4199,15 @@ boot();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 <script src="usd-rate-fix.js?v=1"></script>
+
+<script>
+(function(){
+  ['stockV','mfgV','expiryV','expMis'].forEach(name=>{
+    const orig=window[name];
+    if(typeof orig!=='function')return;
+    window[name]=function(){const r=orig.apply(this,arguments);setTimeout(initStockUnits,0);return r};
+  });
+})();
+</script>
 </body>
 </html>
