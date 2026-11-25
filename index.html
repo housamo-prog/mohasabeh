@@ -668,10 +668,10 @@ async function loadUO(){
 }
 async function refresh(){
   let [a,b,c]=await Promise.all([
-    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active'+(S.noExp?'':',track_expiry,expiry_alert_days')).eq('active',true).order('name'),
+    db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,buy_price,stock_qty,min_stock,active'+(S.noExp?'':',track_expiry,expiry_alert_days')).eq('active',true).order('name'),
     db.from('partners').select('*').order('name'),
     db.from('shops').select('*').eq('id',S.shop.id).single()]);
-  if(a.error&&!S.noExp){S.noExp=true;a=await db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,stock_qty,min_stock,active').eq('active',true).order('name')}
+  if(a.error&&!S.noExp){S.noExp=true;a=await db.from('products').select('id,shop_id,name,barcode,unit,sale_price,retail_price,semi_wholesale_price,wholesale_price,sale_currency,buy_price,stock_qty,min_stock,active').eq('active',true).order('name')}
   if(a.error||b.error)return;
   S.prods=a.data||[];S.parts=b.data||[];if(c.data)S.shop=c.data;
   await loadUO();await loadLots();
@@ -875,7 +875,7 @@ function add(id,n=1){
   fqInc(id,1);S.pop=id;
   if(c){c.qty=+(c.qty+n).toFixed(3);return cartV()}
   let base;if(S.mode==='sale')base=tierPrice(p,partnerTier())*rate(p.sale_currency||'SYP');
-  else{const sp=supplierPrice($('#pt')?.value||'',p.id);base=sp?(+sp.unit_price||0)*rate(sp.currency||'SYP'):+p.avg_cost||0;}
+  else{const sp=supplierPrice($('#pt')?.value||'',p.id);base=sp?(+sp.unit_price||0)*rate(sp.currency||'SYP'):(+p.buy_price>0?(+p.buy_price)*rate(p.sale_currency||'SYP'):(+p.avg_cost||0));}
   S.cart.push({id,name:p.name,qty:n,base,f:1,un:null,price:+(base/rate(S.cur)).toFixed(4)});cartV()
 }
 function setCur(c){S.cur=c;S.cart.forEach(i=>i.price=+(i.base*(i.f||1)/rate(c)).toFixed(4));cartV()}
@@ -961,6 +961,7 @@ async function _once_post(){
     if(bad&&navigator.onLine){await refresh();bad=chk()}
     if(bad&&!await ok('الكمية غير كافية',{msg:bad+'\n\nسيصبح رصيد هذا المستودع بالسالب. هل تريد المتابعة؟',icon:'alert',yes:'متابعة'}))return
   }
+  if(!sale&&!S.edit)await askBuyPrices();
   const args={p_shop:S.shop.id,p_client:uid(),p_partner:$('#pt').value||null,p_currency:S.cur,p_rate:rate(S.cur),
     p_items:buildItems(sale),p_paid:paid};
   if(discAmt()>0)args.p_discount=discAmt();
@@ -1928,11 +1929,12 @@ function printObj(x){
 /* ---- المنتجات ---- */
 function prodV(){
   const ow=can('products'),cs=can('costs');
-  $('#v').innerHTML=`${ow?`<div class=card><b>مادة جديدة</b><input id=pn placeholder="اسم المادة"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
+  $('#v').innerHTML=`${ow?'<div class=card><button class="b" style="width:100%" onclick="costV()">تعديل كلفة المخزون (زيادة أو نقصان)</button></div>':''}${ow?`<div class=card><b>مادة جديدة</b><input id=pn placeholder="اسم المادة"><div class=row><input id=pb placeholder="الباركود (اختياري)"><button class="b s" style="flex:0;padding:10px 14px" onclick="scanTo('pb')">📷</button></div>
   <label class=fl>الوحدة الأساسية (المخزون يُحفظ بها)</label><input id=pu value="قطعة" placeholder="قطعة / كيلو / متر">
   <label class=m style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type=checkbox id=pxe style="width:auto;margin:0" onchange="$('#pxd').style.display=this.checked?'':'none'"> هذه المادة تتطلب تاريخ صلاحية</label>
   <div id=pxd style="display:none"><label class=fl>التنبيه قبل انتهاء الصلاحية بـ (يوم)</label><input id=pxn type=number inputmode=numeric value="30"></div>
   <label class=fl>عملة أسعار المادة</label><select id=pc>${curOptions('SYP')}</select>
+  <label class=fl>سعر الشراء (بعملة المادة)</label><input id=pbuy type=number inputmode=decimal placeholder="0">
   <div class=row><div><label class=fl>سعر المفرق</label><input id=pp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>سعر نصف الجملة</label><input id=psp type=number inputmode=decimal placeholder="0"></div></div>
   <div class=row><div><label class=fl>سعر الجملة</label><input id=pwp type=number inputmode=decimal placeholder="0"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=pm type=number inputmode=decimal placeholder="0"></div></div>
   <button class=b onclick="addProd()">حفظ المادة</button></div>`:''}
@@ -1946,7 +1948,7 @@ async function _once_addProd(){
   if(S.prods.some(p=>p.name==n)&&!await ok('يوجد منتج بنفس الاسم',{msg:'هل تريد إضافة منتج آخر بنفس الاسم؟',icon:'alert',yes:'إضافة'}))return;
   if($('#pp').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#pp').value,semi=$('#psp').value.trim()===''?null:+$('#psp').value,whole=$('#pwp').value.trim()===''?null:+$('#pwp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
   const xp=expPayload('px');if(xp===null)return toast(EXPNEED);
-  const {data:nd,error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,unit:$('#pu').value.trim()||'قطعة',sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#pc').value,min_stock:+$('#pm').value||0,...xp}).select('id').single();
+  const {data:nd,error}=await db.from('products').insert({shop_id:S.shop.id,name:n,barcode:$('#pb').value.trim()||null,unit:$('#pu').value.trim()||'قطعة',sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#pc').value,buy_price:+(toEn($('#pbuy').value)||0),min_stock:+$('#pm').value||0,...xp}).select('id').single();
   if(error)return toast(dupMsg(error));
   await refresh();if(nd&&nd.id){editP(nd.id);toast('تم الحفظ ✓ يمكنك الآن إضافة وحدات وعروض للمادة')}else prodV()
 }
@@ -1957,6 +1959,7 @@ function editP(id){
   <label class=m style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type=checkbox id=exe style="width:auto;margin:0" ${p.track_expiry?'checked':''} onchange="$('#exd').style.display=this.checked?'':'none'"> هذه المادة تتطلب تاريخ صلاحية</label>
   <div id=exd style="${p.track_expiry?'':'display:none'}"><label class=fl>التنبيه قبل انتهاء الصلاحية بـ (يوم)</label><input id=exn type=number inputmode=numeric value="${alDays(p)}"></div>
   <label class=fl>عملة أسعار المادة</label><select id=ec>${curOptions(p.sale_currency||'SYP')}</select>
+  <label class=fl>سعر الشراء (بعملة المادة)</label><input id=ebuy type=number inputmode=decimal value="${+p.buy_price||0}">
   <div class=row><div><label class=fl>سعر المفرق</label><input id=ep type=number inputmode=decimal value="${tierPrice(p,'retail')}"></div><div><label class=fl>سعر نصف الجملة</label><input id=esp type=number inputmode=decimal value="${tierPrice(p,'semi_wholesale')}"></div></div>
   <div class=row><div><label class=fl>سعر الجملة</label><input id=ewp type=number inputmode=decimal value="${tierPrice(p,'wholesale')}"></div><div><label class=fl>حد التنبيه للمخزون</label><input id=ei type=number inputmode=decimal value="${p.min_stock}" placeholder="حد التنبيه"></div></div>
   <div class=row><button class=b onclick="saveP('${p.id}')">حفظ</button><button class="b s" onclick="prodV()">رجوع</button></div>
@@ -1968,7 +1971,7 @@ async function _once_saveP(id){
   const n=$('#en').value.trim();if(!n)return toast('الاسم مطلوب');
   if($('#ep').value.trim()==='')return toast('سعر المفرق مطلوب');const retail=+$('#ep').value,semi=$('#esp').value.trim()===''?null:+$('#esp').value,whole=$('#ewp').value.trim()===''?null:+$('#ewp').value;if(retail<0||(semi!==null&&semi<0)||(whole!==null&&whole<0))return toast('الأسعار لا يمكن أن تكون سالبة');
   const xp=expPayload('ex');if(xp===null)return toast(EXPNEED);
-  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,unit:$('#eun').value.trim()||'قطعة',min_stock:+$('#ei').value||0,...xp}).eq('id',id);
+  const {error}=await db.from('products').update({name:n,barcode:$('#eb').value.trim()||null,sale_price:retail,retail_price:retail,semi_wholesale_price:semi,wholesale_price:whole,sale_currency:$('#ec').value,buy_price:+(toEn($('#ebuy').value)||0),unit:$('#eun').value.trim()||'قطعة',min_stock:+$('#ei').value||0,...xp}).eq('id',id);
   if(error)return toast(dupMsg(error));
   await refresh();prodV();toast('تم الحفظ ✓')
 }
@@ -3179,7 +3182,7 @@ async function expSales(){
 }
 async function expProducts(){
   const rows=[['الاسم','الباركود','الوحدة','سعر الشراء','سعر البيع','حد التنبيه']];
-  (S.prods||[]).forEach(p=>rows.push([p.name,p.barcode||'',p.unit||'','',p.sale_price||0,p.min_stock||0]));
+  (S.prods||[]).forEach(p=>rows.push([p.name,p.barcode||'',p.unit||'',p.buy_price||0,p.sale_price||0,p.min_stock||0]));
   csvDownload('مواد-'+S.dayC+'.csv',rows);
 }
 async function expBalances(){
@@ -3199,7 +3202,7 @@ async function impProducts(input){
     const name=(r[0]||'').trim(), bc=(r[1]||'').trim();
     if(!name||(bc&&have.has(bc))){skipped++;return}
     if(bc)have.add(bc);
-    list.push({shop_id:S.shop.id,name,barcode:bc||null,unit:(r[2]||'').trim()||'قطعة',sale_price:+r[4]||0,min_stock:+r[5]||0,sale_currency:'SYP'});
+    list.push({shop_id:S.shop.id,name,barcode:bc||null,unit:(r[2]||'').trim()||'قطعة',buy_price:+r[3]||0,sale_price:+r[4]||0,min_stock:+r[5]||0,sale_currency:'SYP'});
   });
   if(!list.length){msg.textContent='لا توجد مواد صالحة للاستيراد (تجاهل '+skipped+')';return}
   const {error}=await db.from('products').insert(list);
@@ -3367,6 +3370,100 @@ async function stmtTabV(){
 function stmtTabPick(){
   const a=S.ac.find(x=>x.id==$('#sta').value);if(!a)return;
   stmtCard({account:a.id,usd:a.sys_code=='1011',nat:a.type=='asset'||a.type=='expense',title:'كشف حساب '+a.code+' '+a.name});
+}
+
+/* ====== الدفعة 3: سعر الشراء وتعديل كلفة المخزون وتنبيه سعر الشراء ====== */
+function cmFor(p,m,v){
+  const r=rate(p.sale_currency||'SYP'),old=+p.avg_cost||0;
+  if(m==='buy'&&!(+p.buy_price>0))return {p,skip:true};
+  let nw;
+  if(m==='buy')nw=(+p.buy_price||0)*r;
+  else if(m==='add')nw=old+v*r;
+  else nw=old*(1+v/100);
+  nw=Math.max(0,+nw.toFixed(4));
+  const diff=Math.round((+p.stock_qty||0)*(nw-old)*100)/100;
+  return {p,old,nw,diff};
+}
+function cmList(){
+  if(!$('#cpm'))return [];
+  const m=$('#cpm').value,v=+$('#cpv')?.value||0;
+  const ps=$('#cps').value==='all'?S.prods:S.prods.filter(x=>x.id==$('#cpp').value);
+  return ps.map(p=>cmFor(p,m,v));
+}
+function cmMode(){
+  const m=$('#cpm').value;
+  $('#cpvw').style.display=m==='buy'?'none':'';
+  $('#cplb').textContent=m==='pct'?'النسبة المئوية (سالبة للنقصان)':'المبلغ للوحدة (بعملة المادة، سالب للنقصان)';
+  cmPrev();
+}
+function cmPrev(){
+  const el=$('#cpprev');if(!el)return;
+  const L=cmList();
+  if(!L.length){el.innerHTML='';return}
+  const ok2=L.filter(x=>!x.skip);
+  const skipped=L.length-ok2.length;
+  const total=Math.round(ok2.reduce((a,x)=>a+x.diff,0)*100)/100;
+  const tag=total>0?'ربح فروقات':total<0?'خسارة فروقات':'لا فرق';
+  if($('#cps').value==='all'){
+    el.innerHTML=`عدد الأصناف التي ستتغير: <b>${ok2.filter(x=>x.nw!==x.old).length}</b>`+
+      (skipped?` · بدون سعر شراء (تُتجاهل): <b>${skipped}</b>`:'')+
+      `<br>إجمالي فرق قيمة المخزون <b>${fmt(total)}</b> ل.س (${tag})`;
+    return;
+  }
+  const c=ok2[0];
+  if(!c){el.innerHTML='سعر الشراء غير مسجّل لهذه المادة';return}
+  el.innerHTML=`الكلفة الحالية <b>${fmt(c.old)}</b> ← الجديدة <b>${fmt(c.nw)}</b> ل.س<br>فرق قيمة المخزون <b>${fmt(c.diff)}</b> ل.س (${tag})`;
+}
+function cmScope(){$('#cpwrap').style.display=$('#cps').value==='all'?'none':'';cmPrev()}
+function costV(){
+  if(!S.prods.length)return toast('لا توجد مواد بعد');
+  $('#v').innerHTML=`<div class=card><b>تعديل كلفة المخزون</b><div class=m>تغيّر متوسط كلفة الأصناف، ويُسجَّل فرق قيمة المخزون تلقائياً في حساب فروقات الجرد.</div>
+    <label class=fl>النطاق</label><select id=cps onchange="cmScope()"><option value=one>صنف محدد</option><option value=all>كل الأصناف</option></select>
+    <div id=cpwrap><label class=fl>الصنف</label><select id=cpp onchange="cmPrev()">${S.prods.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+    <label class=fl>الطريقة</label><select id=cpm onchange="cmMode()"><option value=buy>حسب سعر الشراء المسجّل</option><option value=add>زيادة أو نقصان مبلغ ثابت للوحدة</option><option value=pct>زيادة أو نقصان بنسبة مئوية</option></select>
+    <div id=cpvw><label class=fl id=cplb>المبلغ للوحدة (بعملة المادة، سالب للنقصان)</label><input id=cpv type=number inputmode=decimal dir=ltr placeholder=0 oninput="cmPrev()"></div>
+    <div id=cpprev class=m style="margin:10px 0"></div>
+    <div class=row><button class="b s" onclick="prodV()">رجوع</button><button class=b onclick="costApply()">تطبيق</button></div></div>`;
+  cmMode();
+}
+async function costApply(){
+  const m=$('#cpm').value;
+  if(m!=='buy'&&($('#cpv').value===''||isNaN(+$('#cpv').value)))return toast('أدخل القيمة');
+  const L=cmList();
+  if(!L.length)return toast('اختر المادة أولاً');
+  const todo=L.filter(x=>!x.skip&&x.nw!==x.old);
+  if(!todo.length)return toast(L.every(x=>x.skip)?'سعر الشراء غير مسجّل لهذه المادة':'لا يوجد تغيير في الكلفة');
+  const total=Math.round(todo.reduce((a,x)=>a+x.diff,0)*100)/100;
+  const msg=$('#cps').value==='all'
+    ?`سيتغير متوسط كلفة ${todo.length} صنف. إجمالي فرق قيمة المخزون ${fmt(total)} ل.س يُسجَّل في فروقات الجرد.`
+    :`ستصبح كلفة ${todo[0].p.name} ${fmt(todo[0].nw)} ل.س بدلاً من ${fmt(todo[0].old)}. فرق قيمة المخزون ${fmt(todo[0].diff)} ل.س يُسجَّل في فروقات الجرد.`;
+  if(!await ok('تأكيد تعديل الكلفة',{msg,icon:'alert',yes:'تطبيق'}))return;
+  let done=0,failed=0;
+  for(const x of todo){
+    const r=await call('post_cost_adjust',{p_shop:S.shop.id,p_client:uid(),p_product:x.p.id,p_method:m,p_value:m==='buy'?0:+$('#cpv').value,p_date:today()});
+    if(r===undefined)failed++;else done++;
+  }
+  await refresh();
+  toast(failed?`تم تعديل ${done} صنف، وفشل ${failed}`:`تم تعديل ${done} صنف ✓`);
+  prodV();
+}
+async function askBuyPrices(){
+  const seen={};
+  S.cart.forEach(i=>{const p=S.prods.find(x=>x.id==i.id);if(p)seen[p.id]={p,i}});
+  const ch=[];
+  Object.values(seen).forEach(({p,i})=>{
+    const f=i.f||1, unitInv=i.price/f;
+    const reg=+p.buy_price>0;
+    const oldInv=reg?(+p.buy_price)*rate(p.sale_currency||'SYP')/rate(S.cur):null;
+    if(oldInv===null||Math.abs(unitInv-oldInv)>0.0001){
+      ch.push({p,old:oldInv,unitInv,newBuy:+(unitInv*rate(S.cur)/rate(p.sale_currency||'SYP')).toFixed(4)});
+    }
+  });
+  if(!ch.length)return;
+  const lines=ch.map(c=>c.p.name+': '+(c.old==null?'لم يُسجَّل سعر':fmt(c.old))+' ← '+fmt(c.unitInv)+' '+S.cur).join('\n');
+  if(!await ok('سعر الشراء مختلف',{msg:'سعر الشراء في هذه الفاتورة يختلف عن المسجّل في بطاقة المادة:\n'+lines+'\n\nهل تريد تحديث سعر الشراء في بطاقة هذه المواد؟',icon:'alert',yes:'تحديث'}))return;
+  for(const c of ch){await db.from('products').update({buy_price:c.newBuy}).eq('id',c.p.id)}
+  toast('تم تحديث سعر الشراء ✓');
 }
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
