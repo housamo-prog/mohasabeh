@@ -2744,8 +2744,10 @@ async function remind(id){
     const f=await dlg({title:'رقم واتساب '+p.name,msg:'لا يوجد رقم هاتف صحيح محفوظ لهذا الزبون. سيُحفظ الرقم في بياناته.',icon:'wa',yes:'حفظ وإرسال',fields:[{k:'ph',label:'رقم الهاتف',tel:true,val:ph||'',ph:'09xxxxxxxx'}],check:v=>phOk(v.ph)?'':'أدخل رقماً صحيحاً، مثل 0933123456'});
     if(!f)return;ph=f.ph.trim();p.phone=ph;
     db.from('partners').update({phone:ph}).eq('id',id).then(({error})=>{if(error)toast('لم يُحفظ الرقم: '+error.message)})}
-  const url='https://wa.me/'+waNum(ph)+'?text='+encodeURIComponent(waMsg(p,b.r,b.usd));
-  const w=open(url,'_blank');if(!w)location.href=url;
+  const pre=open('','_blank');
+  const kashf=await stmtSummary(id);
+  const url='https://wa.me/'+waNum(ph)+'?text='+encodeURIComponent(waMsg(p,b.r,b.usd)+kashf);
+  if(pre)pre.location.href=url;else location.href=url;
   const now=Date.now(),L=RL();L[id]=now;try{localStorage['rl'+S.shop.id]=JSON.stringify(L)}catch(e){}
   const q=rlQ();q.push({p:id,t:now,a:b.r});localStorage['rlq'+S.shop.id]=JSON.stringify(q);rlFlush();
   document.querySelectorAll(`[data-rl="${id}"]`).forEach(e=>{e.textContent=rlTxt(id);e.classList.add('sent')});
@@ -3826,6 +3828,31 @@ function repPrintReport(){
   const rows=R.D.map(x=>[esc(x.rep_name),fmt(x.pct)+'%',fmt(x.sales_count),fmt(x.sales_total),fmt(x.returns_total),fmt(x.net),fmt(x.commission)]);
   repPrint('تقرير المندوبين',R.from+' ← '+R.to+' · بالليرة السورية',tblHtml(cols,rows,['المجموع','',fmt(tot.n),fmt(rd2(tot.s)),fmt(rd2(tot.r)),fmt(rd2(tot.net)),fmt(rd2(tot.c))],THP,TDP));
 }
+
+/* ====== كشف مختصر للزبون داخل رسالة التذكير ====== */
+async function stmtSummary(id){
+  const from=ld(new Date(Date.now()-365*864e5)),to=today();
+  const {data,error}=await db.rpc('partner_statement_detail',{p_shop:S.shop.id,p_partner:id,p_from:from,p_to:to});
+  if(error||!data||!data.length)return '';
+  const rows=data.filter(r=>r.ref_type!==null).slice(-5);
+  if(!rows.length)return '';
+  return '\n\nآخر الحركات:\n'+rows.map(r=>{
+    const v=(+r.debit||0)-(+r.credit||0);
+    return '• '+r.entry_date+' '+r.description+' : '+(v>=0?'+':'-')+fmt(Math.abs(v))+' ل.س · الرصيد '+fmt(r.balance)+' ل.س';
+  }).join('\n');
+}
+
+/* ====== إقفال الفترة ====== */
+async function periodLockSave(){
+  if(S.role!=='owner')return toast('للمالك فقط');
+  const v=($('#plk')||{}).value||'';
+  if(v&&v>today())return toast('لا يمكن الإقفال على تاريخ مستقبلي');
+  const r=await db.rpc('set_period_lock',{p_shop:S.shop.id,p_date:v||null});
+  if(r.error)return toast(/function|schema cache|does not exist/i.test(r.error.message||'')?'شغّل ملف SQL إقفال الفترة أولاً':r.error.message);
+  S.shop.period_lock=v||null;
+  toast(v?'تم إقفال الفترة حتى '+v+' ✓':'تم إلغاء الإقفال ✓');
+  coV();
+}
 async function addPart(...args){return runMutationOnce('addPart',()=>_once_addPart(...args))}
 async function _once_addPart(){
   const n=$('#an').value.trim();if(!n)return toast('الاسم مطلوب');
@@ -4092,7 +4119,7 @@ const coHdr=()=>`<h3 style="text-align:center;margin:0">${esc(S.shop.name)}</h3>
 const coFtr=()=>S.shop.invoice_note?`<hr><div style="text-align:center">${esc(S.shop.invoice_note)}</div>`:'';
 function coV(){
   const s=S.shop;S._wi=undefined;
-  $('#v').innerHTML=`<div class=card><b>بيانات الشركة</b><div class=m>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة.</div>
+  $('#v').innerHTML=`${S.role==='owner'?`<div class=card><b>إقفال الفترة</b><div class=m>لا يمكن تسجيل أو تعديل أي حركة بتاريخ يساوي تاريخ الإقفال أو يسبقه. اتركه فارغاً لإلغاء الإقفال.</div><div class=m style="margin-top:8px">الفترة مقفلة حتى: <b>${esc(S.shop.period_lock||'لا يوجد')}</b></div><input type=date id=plk dir=ltr value="${esc(S.shop.period_lock||'')}" style="margin-top:6px"><div class=row style="margin-top:8px"><button class=b onclick="periodLockSave()">حفظ الإقفال</button></div></div>`:''}<div class=card><b>بيانات الشركة</b><div class=m>تظهر أعلى الفواتير والسندات وكشوف الحساب عند الطباعة.</div>
   <div class=m style="margin-top:8px">العنوان</div><input id=cad value="${esc(s.address||'')}" placeholder="مثال: حلب - الجميلية - شارع ...">
   <div class=m>أرقام الهاتف (يمكنك كتابة أكثر من رقم)</div><input id=cph dir=ltr value="${esc(s.phones||'')}" placeholder="0933 000 000 - 021 000 0000">
   <div class=m>رقم واتساب المحل (يظهر كرمز QR أعلى فواتير البيع، اتركه فارغاً لإخفائه)</div><input id=cwa dir=ltr inputmode=tel value="${esc(s.whatsapp||'')}" placeholder="0933 000 000">
