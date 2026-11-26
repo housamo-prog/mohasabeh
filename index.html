@@ -805,7 +805,7 @@ function inv(){
   <details id=opt ${S.optO?'open':''} ontoggle="S.optO=this.open" ${open?'style="display:none"':''}><summary><span>${sale?'الزبون والدفع':'المورد والدفع'}</span><span id=os class=m></span></summary>
   ${S.fixedWh?`<div class=m>المستودع: ${esc((S.whs.find(w=>w.id==S.fixedWh)||{}).name||'')}</div>`:''}
   <label class=fl for=cur>العملة</label><select id=cur onchange="setCur(this.value)">${curOptions(S.cur)}</select>
-  ${sale&&(S.reps||[]).some(r=>r.active)?`<label class=fl for=rp>المندوب</label><select id=rp><option value="">بدون مندوب</option>${S.reps.filter(r=>r.active).map(r=>`<option value=${r.id}>${esc(r.name)}`).join('')}</select>`:''}
+  ${sale&&(S.reps||[]).some(r=>r.active)?`<label class=fl for=rp>المندوب</label><select id=rp><option value="">بدون مندوب</option>${S.reps.filter(r=>r.active).map(r=>`<option value=${r.id} ${S.edit&&S.edit.rep===r.id?'selected':''}>${esc(r.name)}`).join('')}</select>`:''}
   <label class=fl for=pt>${sale?'الزبون':'المورد'}</label><div class=row><select id=pt onchange="partnerChanged()"><option value="">${sale?'بدون زبون (نقدي)':'اختر المورد (للآجل)'}${list.map(p=>`<option value=${p.id}>${esc(p.name)}`).join('')}</select><button id=np class="b s" style="flex:0;padding:10px 14px" onclick="newPartner()" title="إضافة ${sale?'زبون':'مورد'} جديد" aria-label="إضافة ${sale?'زبون':'مورد'} جديد">${ic('plus',18)}</button></div>
   <label class=fl for=pm>طريقة الدفع</label><select id=pm onchange="pmCh()"><option value=cash>نقداً بالكامل<option value=credit>آجل (بدون دفعة)<option value=part>دفعة جزئية والباقي آجل</select>
   <input id=paid type=text inputmode=decimal dir=ltr placeholder="المبلغ المدفوع الآن" style="display:none">
@@ -982,6 +982,7 @@ async function _once_post(){
   const auto=sale&&r&&$('#ap')&&$('#ap').checked;
   S.cart=[];S.disc={v:'',pct:false};
   if(sale&&r&&repId){const rr=await db.rpc('set_sale_rep',{p_shop:S.shop.id,p_sale:r,p_rep:repId});if(rr.error)toast('الفاتورة حُفظت لكن تعذّر ربط المندوب: '+rr.error.message)}
+  if(sale&&r===null&&repId&&args&&args.p_client){const Q=qGet();Q.push({fn:'set_sale_rep_by_client',args:{p_shop:S.shop.id,p_client:args.p_client,p_rep:repId},meta:qMeta('set_sale_rep_by_client',{})});qSet(Q)}
   if(r)await refresh();
   inv();
   if(r===null){
@@ -1854,7 +1855,7 @@ async function histLoad(){
   S.histPriv=true;
   const qn=(f.q||'').trim(),isNo=/^\d+$/.test(qn),byName=!!qn&&!isNo;
   const mk=(tb,dc,items)=>{
-    let q=db.from(tb).select('id,'+dc+',currency,rate,partner_id,total,paid,discount,voided_at,created_at,'+(S.noNo?'':'invoice_no,')+(byName?'partners!inner(name,phone)':'partners(name,phone)')+','+items);
+    let q=db.from(tb).select('id,'+dc+',currency,rate,partner_id,rep_id,total,paid,discount,voided_at,created_at,'+(S.noNo?'':'invoice_no,')+(byName?'partners!inner(name,phone)':'partners(name,phone)')+','+items);
     if(f.from)q=q.gte(dc,f.from);
     if(f.to)q=q.lte(dc,f.to);
     if(f.st=='void')q=q.not('voided_at','is',null);else if(f.st=='open'||f.st=='debt')q=q.is('voided_at',null);
@@ -1908,7 +1909,7 @@ function editInv(k){
   S.cart=x.items.map(i=>{const us=S.units[i.id]||[],u=i.un&&+i.uq>0?us.find(v=>v.name===i.un):null,free=+i.p===0;
     if(u&&!free){const f=+u.factor,uq=+i.uq;return {id:i.id,name:i.n,qty:uq,price:+(+i.q*+i.p/uq).toFixed(4),base:+i.p*rt,f,un:u.id,noOffer:true,locked:true,free:false,note:i.note||'',nt:!!i.note,exp:i.exp||''}}
     return {id:i.id,name:i.n,qty:+i.q,price:+i.p,base:+i.p*rt,f:1,un:null,noOffer:true,locked:true,free,note:i.note||'',nt:!!i.note,exp:i.exp||''}});S.disc={v:+x.discount>0?String(x.discount):'',pct:false};
-  S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,cur:x.currency,rate:rt};
+  S.edit={kind:x.kind,id:x.id,date:x.date,paid:x.paid,total:x.total,partner:x.partner_id,rep:x.rep_id,cur:x.currency,rate:rt};
   go(S.mode)
 }
 async function voidInv(...args){return runMutationOnce('voidInv',()=>_once_voidInv(...args))}
@@ -3772,6 +3773,7 @@ async function repsV(){
     <input id=rph dir=ltr placeholder="الهاتف (اختياري)" value="${esc(REP_EDIT?REP_EDIT.phone||'':'')}">
     <label class=fl>نسبة العمولة %</label>
     <input id=rpc inputmode=decimal dir=ltr value="${REP_EDIT?REP_EDIT.commission_pct:0}">
+    ${REP_EDIT?`<label class=m style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type=checkbox id=rpa style="width:auto;margin:0" ${REP_EDIT.active!==false?'checked':''}> فعّال (يظهر في شاشة البيع)</label>`:''}
     <div class=row style="margin-top:8px"><button class=b onclick="repSave()">حفظ</button>${REP_EDIT?'<button class="b s" onclick="repCancel()">إلغاء التعديل</button>':''}</div></div>`:''}
   <div class=card><b>تقرير المبيعات والعمولة</b>
     <div class=row style="margin-top:8px"><div><label class=fl for=rf>من</label><input id=rf type=date value="${S.rpf.from}"></div><div><label class=fl for=rt>إلى</label><input id=rt type=date value="${S.rpf.to}"></div></div>
@@ -3794,7 +3796,7 @@ async function repSave(){
   if(!(pct>=0&&pct<=100))return toast('نسبة العمولة يجب أن تكون بين 0 و 100');
   let r;
   if(REP_EDIT){
-    r=await db.rpc('update_sales_rep',{p_shop:S.shop.id,p_id:REP_EDIT.id,p_name:n,p_phone:ph||null,p_pct:pct,p_active:REP_EDIT.active!==false});
+    r=await db.rpc('update_sales_rep',{p_shop:S.shop.id,p_id:REP_EDIT.id,p_name:n,p_phone:ph||null,p_pct:pct,p_active:$('#rpa')?$('#rpa').checked:(REP_EDIT.active!==false)});
   }else{
     r=await db.rpc('add_sales_rep',{p_shop:S.shop.id,p_name:n,p_phone:ph||null,p_pct:pct});
   }
